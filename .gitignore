@@ -14,3 +14,4 @@
 /libtool
 /Makefile
 /src/micbench_io
+/jkr/result/*
