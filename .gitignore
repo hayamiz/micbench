@@ -5,3 +5,12 @@
 /config/*
 /configure
 /src/config.h.in
+*/Makefile.in
+*/Makefile
+/src/config.h
+/src/stamp-h1
+/src/.deps/*
+/config.status
+/libtool
+/Makefile
+/src/micbench_io
