@@ -17,3 +17,4 @@
 /jkr/result/*
 /src/micbench-io
 /src/micbench-mem
+/src/micbench-mem.s
