@@ -34,25 +34,30 @@ $regnum = 1 # 8
 
 def generate_rand(out)
   # use r8 and r9
+  num_ops = 2 << 10
   out.puts <<EOS
+#define	MEM_INNER_LOOP_RANDOM_NUM_OPS	#{num_ops}
 __asm__ volatile(
 "#rand inner loop\\n"
 EOS
-  (2 << 10).times do |idx|
-    rnum = idx % $regnum + 8
-    ofst = idx * 8
+  num_ops.times do |idx|
     out.puts <<EOS
-"movq	(%%rax), %%r8\\n"
-"movq	%%r8, (%%rax)\\n"
-"movq	%%r8, %%rax\\n"
+"movq	(%%rax), %%rax\\n"
 
 EOS
+
+#     out.puts <<EOS
+# "movq	(%%rax), %%r8\\n"
+# // "movq	%%r8, (%%rax)\\n"
+# "movq	%%r8, %%rax\\n"
+# 
+# EOS
   end
 
   out.puts <<EOS
 : "=a" (ptr)
 : "0" (ptr)
-: "%r8");
+);
 EOS
 
 end
