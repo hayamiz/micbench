@@ -18,3 +18,5 @@
 /src/micbench-io
 /src/micbench-mem
 /src/micbench-mem.s
+/src/micbench-mem-inner-rand.c
+/src/micbench-mem-inner.c
