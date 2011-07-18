@@ -38,7 +38,7 @@ def generate_rand(out)
 __asm__ volatile(
 "#rand inner loop\\n"
 EOS
-  (1024 / 8).times do |idx|
+  (2 << 10).times do |idx|
     rnum = idx % $regnum + 8
     ofst = idx * 8
     out.puts <<EOS

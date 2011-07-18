@@ -119,6 +119,17 @@ rand_range(GRand *rand, gulong from, gulong to)
 }
 
 void
+swap_glong(glong *ptr1, glong *ptr2)
+{
+    glong tmp;
+    if (ptr1 != ptr2) {
+        tmp = *ptr1;
+        *ptr1 = *ptr2;
+        *ptr2 = tmp;
+    }
+}
+
+void
 parse_args(gint *argc, gchar ***argv)
 {
     GError *error = NULL;
@@ -385,22 +396,80 @@ do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_siz
         iter_count = 16 * KIBI;
     } else {
         if (option.size > MEBI) {
-            iter_count = 128 * KIBI;
+            iter_count = KIBI;
         } else {
-            iter_count = 4 * MEBI;
+            iter_count = KIBI;
         }
     }
     if (iter_count == 0) {
         iter_count = 1;
     }
 
-    // initialize
-    rand = g_rand_new_with_seed(syscall(SYS_gettid));
+    // initialize pointer loop
+    rand = g_rand_new_with_seed(syscall(SYS_gettid) + time(NULL));
     ptr_start = working_area;
     ptr_end = working_area + (working_size / sizeof(glong));
-    for(ptr = ptr_start;ptr < ptr_end;ptr++){
-        *ptr = (glong)(ptr_start +
-                       (rand_range(rand, 0, working_size / sizeof(glong))));
+
+    for(ptr = ptr_start;ptr < ptr_end;ptr += 64 / sizeof(glong)){ // assume cache line is 64B
+        *ptr = (glong)(ptr + 64 / sizeof(glong));
+    }
+    *(ptr_end - (64 / sizeof(glong))) = (glong) ptr_start;
+
+    // shuffle pointer loop
+    gulong num_cacheline;
+    guint32 ofst;
+    num_cacheline = working_size / 64;
+    for(i = 0; i < num_cacheline; i++){
+        glong *ptr1, *ptr1_succ, *ptr2, *ptr2_succ;
+    retry:
+        ofst = g_rand_int_range(rand, 0, num_cacheline - i);
+        ptr1 = ptr_start + (i * 64 / sizeof(glong));
+        ptr1_succ = (glong *) *ptr1;
+        ptr2 = ptr_start + ((i + ofst) * 64 / sizeof(glong));
+        ptr2_succ = (glong *) *ptr2;
+
+        if (ptr1_succ == ptr2){
+            *ptr1 = (glong) ptr2_succ;
+            *ptr1_succ = *ptr2_succ;
+            *ptr2_succ = (glong) ptr1_succ;
+        } else {
+            *ptr1 = (glong) ptr2_succ;
+            *ptr2 = (glong) ptr1_succ;
+            swap_glong(ptr1_succ, ptr2_succ);
+        }
+
+        if (ptr1 == (glong*) *ptr1 ||
+            ptr2 == (glong*) *ptr2 ||
+            ptr2_succ == (glong*)*ptr2_succ){
+            goto retry;
+            printf("i=%ld\n"
+                   "ptr1:\t%ld\t->\t%ld\n"
+                   "ptr2:\t%ld\t->\t%ld\n"
+                   "ptr2s:\t%ld\t->\t%ld\n",
+                   i,
+                   (ptr1 - ptr_start) / 8,
+                   ((glong*)*ptr1 - ptr_start) / 8,
+                   (ptr2 - ptr_start) / 8,
+                   ((glong*)*ptr2 - ptr_start) / 8,
+                   (ptr2_succ - ptr_start) / 8,
+                   ((glong*)*ptr2_succ - ptr_start) / 8);
+            exit(1);
+        }
+    }
+
+    // check loop
+    gulong counter;
+    for(counter = 1, ptr = (glong *) *ptr_start;
+        ptr != ptr_start;
+        ptr = (glong *) *ptr){
+        // printf("%ld\t->\t%ld\n",
+        //        ((glong) ptr - (glong) ptr_start) / 64,
+        //        (*ptr - (glong) ptr_start) / 64);
+        counter++;
+    }
+    if (counter != num_cacheline){
+        g_printerr("initialization failed. counter=%ld\n", counter);
+        exit(EXIT_FAILURE);
     }
 
     gdouble t = 0;
@@ -413,7 +482,7 @@ do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_siz
         t0 = read_tsc();
         ptr = working_area;
         for(i = 0;i < iter_count;i++){
-            // scan & increment 1KB segment
+            // read & write cache line 1024 times
 #include "micbench-mem-inner-rand.c"
             if (option.num_cswch > 0 && option.num_cswch == ++cswch_counter){
                 cswch_counter = 0;
@@ -422,7 +491,7 @@ do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_siz
         }
         t1 = read_tsc();
         pc->clk += t1 - t0;
-        pc->ops += iter_count * (1024 / sizeof(glong));
+        pc->ops += iter_count * 1024;
         // g_print("loop clk=%ld, ops=%ld\n", pc->clk, pc->ops);
         if (option.cpuusage < 100){
             gdouble timeslice = g_timer_elapsed(timer, NULL) - t - 0.002 * (option.cpuusage / 40)*(option.cpuusage / 40);
@@ -606,7 +675,7 @@ main(gint argc, gchar **argv)
             "total_clk\t%ld\n"
             "exec_time\t%lf\n"
             "ops_per_sec\t%le\n"
-            "response_time\t%le\n",
+            "clk_per_ops\t%le\n",
             (option.seq ? "sequential" : "random"),
             option.multi,
             (option.local ? "true" : "false"),
