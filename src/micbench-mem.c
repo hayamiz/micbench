@@ -487,7 +487,7 @@ do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_siz
         }
         t1 = read_tsc();
         pc->clk += t1 - t0;
-        pc->ops += iter_count * 1024;
+        pc->ops += iter_count * MEM_INNER_LOOP_RANDOM_NUM_OPS;
         // g_print("loop clk=%ld, ops=%ld\n", pc->clk, pc->ops);
         if (option.cpuusage < 100){
             gdouble timeslice = g_timer_elapsed(timer, NULL) - t - 0.002 * (option.cpuusage / 40)*(option.cpuusage / 40);
