@@ -15,3 +15,5 @@
 /Makefile
 /src/micbench_io
 /jkr/result/*
+/src/micbench-io
+/src/micbench-mem

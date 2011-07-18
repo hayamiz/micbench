@@ -109,7 +109,6 @@ def io_analyze(plan)
   results = load_results()
 
   iostress_plot_all(results)
-  iostress_plot_iotrace(results)
   iostress_plot_iostat(results)
 end
 
@@ -136,14 +135,18 @@ def hton(str)
   num
 end
 
-$iostress_xtics = 'set xtics ("1Ki" 2**10, "2Ki" 2**11,"4Ki" 2**12, "8Ki" 2**13, "16Ki" 2**14, "32Ki" 2**15, "64Ki" 2**16, "128Ki" 2**17, "256Ki" 2**18, "1Mi" 2**20, "4Mi" 2**22, "16Mi" 2**24, "64Mi" 2**26)' + "\n"
+$iostress_xtics = 'set xtics ("2Ki" 2**10,"4Ki" 2**12, "8Ki" 2**13, "16Ki" 2**14, "32Ki" 2**15, "64Ki" 2**16, "128Ki" 2**17, "256Ki" 2**18, "1Mi" 2**20, "4Mi" 2**22, "16Mi" 2**24, "64Mi" 2**26)' + "\n"
+
+$iostress_xtics_linear = 'set xtics (' + (1..10).map{|x| "\"#{x*16}Ki\" #{x*16*1024}"}.join(",") + ")\n"
+
+$iostress_xtics_linear_fine = 'set xtics (' + (1..10).map{|x| "\"#{x*2}Ki\" #{x*2*1024}"}.join(",") + ")\n"
 
 def iostress_plot_all(results)
   datafile = File.open(common_file_name("allresults.tsv"), "w")
 
   plot_data_transfer = []
   plot_data_iops = []
-  plot_data_await = []
+  plot_data_response_time = []
   plot_data_avgqu = []
   data_idx = 0
   style_idx = 1
@@ -165,6 +168,9 @@ def iostress_plot_all(results)
                      (ret[:params][:mode] == :read ? ret[:iostat_sterr]['r/s'] : ret[:iostat_sterr]['w/s']),
                      ret[:iostat_avg]['await'], ret[:iostat_sterr]['await'],
                      ret[:iostat_avg]['avgqu-sz'], ret[:iostat_sterr]['avgqu-sz'],
+                     ret[:params][:ofst_start], ret[:params][:ofst_end],
+                     ret[:params][:misalign],
+                     ret[:response_time],
                     ].join("\t"))
     end
     datafile.puts("\n\n")
@@ -181,6 +187,9 @@ def iostress_plot_all(results)
                      (ret[:params][:mode] == :read ? ret[:iostat_sterr]['r/s'] : ret[:iostat_sterr]['w/s']),
                      ret[:iostat_avg]['await'], ret[:iostat_sterr]['await'],
                      ret[:iostat_avg]['avgqu-sz'], ret[:iostat_sterr]['avgqu-sz'],
+                     ret[:params][:ofst_start], ret[:params][:ofst_end],
+                     ret[:params][:misalign],
+                     ret[:response_time],
                     ].join("\t"))
     end
     datafile.puts("\n\n")
@@ -191,42 +200,42 @@ def iostress_plot_all(results)
     transfer_entry = {
       :title => title,
       :datafile => datafile.path,
-      :using => "1:4:5",
+      :using => "14:4:5",
       :index => "#{data_idx}:#{data_idx}",
       :with => "yerrorbars #{style_spec}"
     }
     transfer_entry_pow2 = {
       :title => nil,
       :datafile => datafile.path,
-      :using => "1:4",
+      :using => "14:4",
       :index => "#{data_idx}:#{data_idx}",
       :with => "lines #{style_spec}"
     }
-    await_entry = {
+    response_time_entry = {
       :title => title,
       :datafile => datafile.path,
-      :using => "1:8:9",
+      :using => "14:($15*1000):9",
       :index => "#{data_idx}:#{data_idx}",
       :with => "yerrorbars #{style_spec}"
     }
-    await_entry_pow2 = {
+    response_time_entry_pow2 = {
       :title => nil,
       :datafile => datafile.path,
-      :using => "1:8:9",
+      :using => "14:($15*1000):9",
       :index => "#{data_idx}:#{data_idx}",
       :with => "lines #{style_spec}"
     }
     avgqu_entry = {
       :title => title,
       :datafile => datafile.path,
-      :using => "1:10:11",
+      :using => "14:10:11",
       :index => "#{data_idx}:#{data_idx}",
       :with => "yerrorbars #{style_spec}"
     }
     avgqu_entry_pow2 = {
       :title => nil,
       :datafile => datafile.path,
-      :using => "1:10:11",
+      :using => "14:10:11",
       :index => "#{data_idx}:#{data_idx}",
       :with => "lines #{style_spec}"
     }
@@ -235,154 +244,122 @@ def iostress_plot_all(results)
     iops_entry = {
       :title => title,
       :datafile => datafile.path,
-      :using => "1:6:7",
+      :using => "14:6:7",
       :index => "#{data_idx}:#{data_idx}",
       :with => "yerrorbars #{style_spec}"
     }
     iops_entry_pow2 = {
       :title => nil,
       :datafile => datafile.path,
-      :using => "1:6",
+      :using => "14:6",
       :index => "#{data_idx}:#{data_idx}",
       :with => "lines #{style_spec}"
     }
     plot_data_transfer.push(transfer_entry)
     plot_data_iops.push(iops_entry)
-    plot_data_await.push(await_entry)
+    plot_data_response_time.push(response_time_entry)
     plot_data_avgqu.push(avgqu_entry)
     data_idx += 1
     style_idx += 1
 
     data_idx += 1
 
-    if ! Dir.exists?(common_file_name("linear-plot"))
-      FileUtils.mkdir_p(common_file_name("linear-plot"))
-    end
-    blocksize_min = group.map{|ret| ret[:params][:blocksize]}.min
-    blocksize_max = group.map{|ret| ret[:params][:blocksize]}.max
-    blocksize_range = blocksize_max - blocksize_min
+    offset_min = group.map{|ret| ret[:params][:misalign]}.min
+    offset_max = group.map{|ret| ret[:params][:misalign]}.max
+    offset_range = offset_max - offset_min
     plot_scatter(:output => common_file_name("#{title}.eps"),
                  :gpfile => common_file_name("#{title}.gp"),
-                 :xlabel => "block size [byte]",
+                 :xlabel => "offset [byte]",
                  :ylabel => "transfer rate [MiB/sec]",
-                 :xrange => "[#{blocksize_min/2}:#{blocksize_max*2}]",
+                 :xrange => "[#{offset_min}:#{offset_max}]",
                  :yrange => "[0:]",
                  :title => "Transfer rate on #{group.first[:params][:device_or_file]}",
                  :plot_data => [transfer_entry.merge({:title => "transfer rate"}),
                                 iops_entry.merge({:other_options => "axis x1y2", :title => "iops"}),
                                 transfer_entry_pow2.merge({:title => nil}),
                                 iops_entry_pow2.merge({:other_options => "axis x1y2", :title => nil})],
-                 :other_options => $iostress_xtics +
-                 "set key left center\nset y2label 'iops [1/sec]'\nset y2tics nomirror\nset logscale x\nset y2range [0:]\n")
-    plot_scatter(:output => common_file_name("linear-plot/#{title}.eps"),
-                 :gpfile => common_file_name("linear-plot/#{title}.gp"),
-                 :xlabel => "block size [byte]",
+                 :other_options => $iostress_xtics_linear +
+                 "set key left center\nset y2label 'iops [1/sec]'\nset y2tics nomirror\nset y2range [0:]\n")
+    plot_scatter(:output => common_file_name("#{title}-zoom.eps"),
+                 :gpfile => common_file_name("#{title}-zoom.gp"),
+                 :xlabel => "offset [byte]",
                  :ylabel => "transfer rate [MiB/sec]",
-                 :xrange => "[#{blocksize_min - blocksize_range / 10}:#{blocksize_max + blocksize_range / 10}]",
+                 :xrange => "[#{offset_min}:#{offset_max / 10}]",
                  :yrange => "[0:]",
                  :title => "Transfer rate on #{group.first[:params][:device_or_file]}",
                  :plot_data => [transfer_entry.merge({:title => "transfer rate"}),
                                 iops_entry.merge({:other_options => "axis x1y2", :title => "iops"}),
                                 transfer_entry_pow2.merge({:title => nil}),
                                 iops_entry_pow2.merge({:other_options => "axis x1y2", :title => nil})],
-                 :other_options => $iostress_xtics +
-                 "set key bottom\nset y2label 'iops [1/sec]'\nset y2tics nomirror\nset y2range [0:]\n")
-    plot_scatter(:output => common_file_name("linear-plot/#{title}-zoom.eps"),
-                 :gpfile => common_file_name("linear-plot/#{title}-zoom.gp"),
-                 :xlabel => "block size [byte]",
-                 :ylabel => "transfer rate [MiB/sec]",
-                 :xrange => "[#{blocksize_min - blocksize_range / 10}:#{blocksize_max + blocksize_range / 10}]",
-                 :yrange => "[0:]",
-                 :title => "Transfer rate on #{group.first[:params][:device_or_file]}",
-                 :plot_data => [transfer_entry.merge({:title => "transfer rate"}),
-                                iops_entry.merge({:other_options => "axis x1y2", :title => "iops"}),
-                                transfer_entry_pow2.merge({:title => nil}),
-                                iops_entry_pow2.merge({:other_options => "axis x1y2", :title => nil})],
-                 :other_options => $iostress_xtics +
-                 "set key bottom\nset y2label 'iops [1/sec]'\nset y2tics nomirror\nset y2range [0:]\n")
+                 :other_options => $iostress_xtics_linear_fine +
+                 "set key left center\nset y2label 'iops [1/sec]'\nset y2tics nomirror\nset y2range [0:]\n")
   end
+
   datafile.close
+
+  offset_min = results.map{|ret| ret[:params][:misalign]}.min
+  offset_max = results.map{|ret| ret[:params][:misalign]}.max
 
   plot_scatter(:output => common_file_name("transfer-rate.eps"),
                :gpfile => common_file_name("transfer-rate.gp"),
-               :xlabel => "block size [byte]",
+               :xlabel => "offset [byte]",
                :ylabel => "transfer rate [MiB/sec]",
-               :xrange => "[2**9:2**20]",
+               :xrange => "[#{offset_min}:#{offset_max}]",
                :yrange => "[0:]",
                :title => "Transfer rate",
                :plot_data => plot_data_transfer,
-               :other_options => $iostress_xtics +
-               "set key top left\nset logscale x\n")
-  plot_scatter(:output => common_file_name("response-time.eps"),
-               :gpfile => common_file_name("response-time.gp"),
-               :xlabel => "block size [byte]",
-               :ylabel => "response time [msec]",
-               :xrange => "[2**9:2**20]",
-               :yrange => "[0:]",
-               :title => "Response time",
-               :plot_data => plot_data_await,
-               :other_options => $iostress_xtics +
-               "set key top left\nset logscale x\n")
-  plot_scatter(:output => common_file_name("response-time-zoom.eps"),
-               :gpfile => common_file_name("response-time-zoom.gp"),
-               :xlabel => "block size [byte]",
-               :ylabel => "response time [msec]",
-               :xrange => "[2**9:2**16]",
-               :yrange => "[0:0.1]",
-               :title => "Response time",
-               :plot_data => plot_data_await,
-               :other_options => $iostress_xtics +
-               "set key top left\nset logscale x\n")
-  plot_scatter(:output => common_file_name("rq-queue-length.eps"),
-               :gpfile => common_file_name("rq-queue-length.gp"),
-               :xlabel => "block size [byte]",
-               :ylabel => "avg. # of request queued",
-               :xrange => "[2**9:2**20]",
-               :yrange => "[0:]",
-               :title => "queue length",
-               :plot_data => plot_data_avgqu,
-               :other_options => $iostress_xtics +
-               "set key top left\nset logscale x\n")
-  plot_scatter(:output => common_file_name("linear-plot/transfer-rate.eps"),
-               :gpfile => common_file_name("linear-plot/transfer-rate.gp"),
-               :xlabel => "block size [byte]",
-               :ylabel => "transfer rate [MiB/sec]",
-               :xrange => "[2**9:2**20]",
-               :yrange => "[0:]",
-               :title => "Transfer rate",
-               :plot_data => plot_data_transfer,
-               :other_options => $iostress_xtics +
+               :other_options => $iostress_xtics_linear +
                "set key top left\n")
   plot_scatter(:output => common_file_name("transfer-rate-zoom.eps"),
                :gpfile => common_file_name("transfer-rate-zoom.gp"),
-               :xlabel => "block size [byte]",
+               :xlabel => "offset [byte]",
                :ylabel => "transfer rate [MiB/sec]",
-               :xrange => "[2**9:2**12]",
+               :xrange => "[#{offset_min}:#{offset_max/5}]",
                :yrange => "[0:]",
                :title => "Transfer rate",
                :plot_data => plot_data_transfer,
-               :other_options => $iostress_xtics +
-               "set key top left\nset logscale x\n")
-  plot_scatter(:output => common_file_name("linear-plot/transfer-rate-zoom.eps"),
-               :gpfile => common_file_name("linear-plot/transfer-rate-zoom.gp"),
-               :xlabel => "block size [byte]",
-               :ylabel => "transfer rate [MiB/sec]",
-               :xrange => "[2**9:2**14+2**12]",
+               :other_options => $iostress_xtics_linear_fine +
+               "set key top left\n")
+  plot_scatter(:output => common_file_name("response-time.eps"),
+               :gpfile => common_file_name("response-time.gp"),
+               :xlabel => "offset [byte]",
+               :ylabel => "response time [msec]",
+               :xrange => "[#{offset_min}:#{offset_max}]",
                :yrange => "[0:]",
-               :title => "Transfer rate",
-               :plot_data => plot_data_transfer,
-               :other_options => $iostress_xtics +
+               :title => "Response time",
+               :plot_data => plot_data_response_time,
+               :other_options => $iostress_xtics_linear +
+               "set key top left\n")
+  plot_scatter(:output => common_file_name("response-time-zoom.eps"),
+               :gpfile => common_file_name("response-time-zoom.gp"),
+               :xlabel => "offset [byte]",
+               :ylabel => "response time [msec]",
+               :xrange => "[#{offset_min}:#{offset_max / 5}]",
+               :yrange => "[0:]",
+               :title => "Response time",
+               :plot_data => plot_data_response_time,
+               :other_options => $iostress_xtics_linear_fine +
+               "set key top left\n")
+  plot_scatter(:output => common_file_name("rq-queue-length.eps"),
+               :gpfile => common_file_name("rq-queue-length.gp"),
+               :xlabel => "offset [byte]",
+               :ylabel => "avg. # of request queued",
+               :xrange => "[#{offset_min}:#{offset_max}]",
+               :yrange => "[0:]",
+               :title => "queue length",
+               :plot_data => plot_data_avgqu,
+               :other_options => $iostress_xtics_linear +
                "set key top left\n")
   plot_scatter(:output => common_file_name("iops.eps"),
                :gpfile => common_file_name("iops.gp"),
-               :xlabel => "block size [byte]",
+               :xlabel => "offset [byte]",
                :ylabel => "iops [1/sec]",
-               :xrange => "[2**9:2**20]",
+               :xrange => "[#{offset_min}:#{offset_max}]",
                :yrange => "[0:]",
                :title => "IOPS",
                :plot_data => plot_data_iops,
-               :other_options => $iostress_xtics +
-               "set key top right\nset logscale x\n")
+               :other_options => $iostress_xtics_linear +
+               "set key top right\n")
 end
 
 def iostress_plot_iostat(results)

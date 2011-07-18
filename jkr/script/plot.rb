@@ -164,7 +164,7 @@ set size 0.9,0.6
 set title "#{config[:title]}"
 set ylabel "#{config[:ylabel]}"
 set xlabel "#{config[:xlabel]}"
-set rmargin 2
+set rmargin 3
 set lmargin 10
 #{xrange}
 #{yrange}
@@ -291,12 +291,12 @@ def plot_scatter(config)
   script = <<EOS
 set term postscript enhanced color
 set output "#{config[:output]}"
-set size 0.8,0.8
+set size 0.9,0.7
 set title "#{config[:title]}"
 set ylabel "#{config[:ylabel]}"
 set xlabel "#{config[:xlabel]}"
-set rmargin 2
-set lmargin 12
+set rmargin 10
+set lmargin 10
 #{xrange}
 #{yrange}
 set grid

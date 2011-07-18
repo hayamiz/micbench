@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
+#include <sys/syscall.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,14 +15,23 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <malloc.h>
+#include <sched.h>
 
 #include <glib.h>
+
+#define NPROCESSOR (sysconf(_SC_NPROCESSORS_ONLN))
 
 // unit
 #define KILO 1000
 #define KIBI 1024
 #define MEBI (KIBI*KIBI)
 #define GIBI (KIBI*MEBI)
+
+typedef struct {
+    pid_t thread_id;
+    cpu_set_t mask;
+    gulong nodemask;
+} thread_assignment_t;
 
 static struct {
     // multiplicity of IO
@@ -34,6 +44,10 @@ static struct {
     gboolean read;
     gboolean write;
 
+    // thread affinity assignment
+    const gchar *assignment_str;
+    thread_assignment_t **assigns;
+
     // timeout
     gint timeout;
 
@@ -45,10 +59,14 @@ static struct {
     gint64 ofst_start;
     gint64 ofst_end;
 
+    gint64 misalign;
+
     // device or file
     const gchar *path;
 
     gboolean verbose;
+
+    gboolean noop;
 } option;
 
 typedef struct {
@@ -70,8 +88,12 @@ typedef struct {
 
 static GOptionEntry entries[] =
 {
+    {"noop", 'n', 0, G_OPTION_ARG_NONE, &option.noop,
+     "Dry-run if this option is specified."},
     {"multi", 'm', 0, G_OPTION_ARG_INT, &option.multi,
      "Multiplicity of IO (default: 1)"},
+    {"assign", 'A', 0, G_OPTION_ARG_STRING, &option.assignment_str,
+    "Thread affinity assignment. <thread id>:<core id>[:<mem node id>][, ...]"},
     {"timeout", 't', 0, G_OPTION_ARG_INT, &option.timeout,
      "Running time of IO stress test (in sec) (default: 60sec)"},
     {"rand", 'r', 0, G_OPTION_ARG_NONE, &option.rand,
@@ -86,6 +108,8 @@ static GOptionEntry entries[] =
      "Offset (in blocks) to start with (default: 0)"},
     {"offset-end", 'e', 0, G_OPTION_ARG_INT64, &option.ofst_end,
      "Offset (in blocks) to end with (default: the size of device)"},
+    {"misalign", 'a', 0, G_OPTION_ARG_INT64, &option.misalign,
+     "Misalignment from current position (in byte) (default: 0)"},
 
     {"verbose", 'v', 0, G_OPTION_ARG_NONE, &option.verbose,
      "Verbose"},
@@ -157,20 +181,24 @@ device_or_file  %s\n\
 access_pattern  %s\n\
 access_mode     %s\n\
 direct_io       %s\n\
+thread affinity	%s\n\
 timeout         %d\n\
 block_size      %d\n\
 offset_start    %ld\n\
 offset_end      %ld\n\
+misalign        %ld\n\
 ",
-            option.multi,
-            option.path,
-            (option.seq ? "sequential" : "random"),
-            (option.read ? "read" : "write"),
-            (option.direct ? "yes" : "no"),
-            option.timeout,
-            option.blk_sz,
-            option.ofst_start,
-            option.ofst_end);
+               option.multi,
+               option.path,
+               (option.seq ? "sequential" : "random"),
+               (option.read ? "read" : "write"),
+               (option.direct ? "yes" : "no"),
+               option.assignment_str,
+               option.timeout,
+               option.blk_sz,
+               option.ofst_start,
+               option.ofst_end,
+               option.misalign);
 }
 
 void
@@ -188,6 +216,108 @@ accum_io_time %lf [sec]\n\
             result->iowait_time);
 }
 
+/*
+ * Thread affinity specification
+ *
+ * <assignments> := <assignment> (',' <assignments>)*
+ * <assignment> := <threads> ':' <physical_core_id> [':' <mem_node_id>]
+ * <threads> := <thread_id> | <thread_id> '-' <thread_id>
+ * <thread_id> := [1-9][0-9]* | 0
+ * <physical_core_id> := [1-9][0-9]* | 0
+ * <mem_mode> := [1-9][0-9]* | 0
+ *
+ */
+gint
+parse_thread_assignment(gint num_threads, thread_assignment_t **assigns, const gchar *assignment_str)
+{
+    gint thread_id;
+    gint thread_id_end;
+    gint core_id;
+    gint mem_node_id;
+    gint i;
+
+    const gchar *str;
+    gchar *endptr;
+
+    for(i = 0; i < num_threads; i++){
+        assigns[i] = NULL;
+    }
+
+    str = assignment_str;
+
+    while(*str != '\0'){
+        if (*str == ',') {
+            str++;
+        }
+
+        /* parse thread id */
+        thread_id = strtod(str, &endptr);
+        if (endptr == str) {
+            return -1;
+        }
+        str = endptr;
+        if (*str == '-'){       /* if multiple threads are specified like '0-7' */
+            str++;
+            thread_id_end = strtod(str, &endptr);
+            if (endptr == str){
+                return -1;
+            }
+            str = endptr;
+        } else {
+            thread_id_end = thread_id;
+        }
+
+        if (*str++ != ':'){
+            return -2;
+        }
+
+        /* parse physical core id */
+        core_id = strtod(str, &endptr);
+        if (endptr == str) {
+            return -3;
+        }
+        str = endptr;
+
+        /* parse memory node id if specified */
+        if (*str == ':'){
+            str++;
+            mem_node_id = strtod(str, &endptr);
+            if (str == endptr){
+                return -5;
+            }
+            str = endptr;
+        } else {
+            mem_node_id = -1;
+        }
+
+
+        if (thread_id >= num_threads || thread_id_end >= num_threads){
+            g_printerr("num_threads: %d, thread_id: %d, thread_id_end: %d\n", num_threads, thread_id, thread_id_end);
+            return -4;
+        } else {
+            for(; thread_id <= thread_id_end; thread_id++){
+                if (assigns[thread_id] == NULL){
+                    assigns[thread_id] = g_malloc(sizeof(thread_assignment_t));
+                }
+                assigns[thread_id]->thread_id = thread_id;
+
+                CPU_ZERO(&assigns[thread_id]->mask);
+                CPU_SET(core_id, &assigns[thread_id]->mask);
+
+                assigns[thread_id]->nodemask = 0;
+
+                if (mem_node_id >= 0){
+                    assigns[thread_id]->nodemask = 1 << mem_node_id;
+                }
+            }
+        }
+    }
+
+    return 0;
+}
+
+
+
 void
 parse_args(gint *argc, gchar ***argv)
 {
@@ -202,6 +332,9 @@ parse_args(gint *argc, gchar ***argv)
     option.direct = FALSE;
     option.read = TRUE;
     option.write = FALSE;
+
+    option.assignment_str = NULL;
+    option.assigns = NULL;
     
     option.timeout = 60;
     
@@ -210,8 +343,11 @@ parse_args(gint *argc, gchar ***argv)
 
     option.ofst_start = 0;
     option.ofst_end = 0;
+
+    option.misalign = 0;
     
     option.verbose = FALSE;
+    option.noop = FALSE;
 
     context = g_option_context_new("device_or_file");
     g_option_context_add_main_entries(context, entries, NULL);
@@ -238,16 +374,18 @@ parse_args(gint *argc, gchar ***argv)
     }
 
     // check device
-    
-    if (option.read) {
-        if (open(option.path, O_RDONLY) == -1) {
-            g_printerr("Cannot open %s with O_RDONLY\n", option.path);
-            goto error;
-        }
-    } else {
-        if (open(option.path, O_WRONLY) == -1) {
-            g_printerr("Cannot open %s with O_WRONLY\n", option.path);
-            goto error;
+
+    if (option.noop == FALSE) {
+        if (option.read) {
+            if (open(option.path, O_RDONLY) == -1) {
+                g_printerr("Cannot open %s with O_RDONLY\n", option.path);
+                goto error;
+            }
+        } else {
+            if (open(option.path, O_WRONLY) == -1) {
+                g_printerr("Cannot open %s with O_WRONLY\n", option.path);
+                goto error;
+            }
         }
     }
 
@@ -255,7 +393,37 @@ parse_args(gint *argc, gchar ***argv)
     gint len = strlen(option.blk_sz_str);
     gchar suffix = option.blk_sz_str[len - 1];
     gdouble size;
-    
+
+    if (option.assignment_str != NULL){
+        gint i;
+        option.assigns = g_malloc(sizeof(thread_assignment_t *) * option.multi);
+        for (i = 0; i < option.multi; i++){
+            option.assigns[i] = NULL;
+        }
+        gint code;
+        if ((code = parse_thread_assignment(option.multi,
+                                            option.assigns,
+                                            option.assignment_str)) != 0){
+            g_printerr("Invalid thread affinity assignment: %s\n",
+                       option.assignment_str);
+            switch(code){
+            case -1:
+
+                break;
+            case -2:
+
+                break;
+            case -3:
+
+                break;
+            case -4:
+                g_printerr("thread id >= # of thread.\n");
+                break;
+            }
+            goto error;
+        }
+    }
+
     size = g_ascii_strtod(option.blk_sz_str, NULL);
     if (isalpha(suffix)) {
         switch(suffix){
@@ -295,9 +463,11 @@ parse_args(gint *argc, gchar ***argv)
         option.ofst_end = path_sz / option.blk_sz;
     }
 
+    g_option_context_free(context);
     return;
 error:
     g_print(g_option_context_get_help(context, FALSE, NULL));
+    g_option_context_free(context);
     exit(EXIT_FAILURE);
 }
 
@@ -372,12 +542,11 @@ do_iostress(th_arg_t *th_arg)
             for(i = 0;i < 100; i++){
                 ofst = (gint64) g_random_double_range((gdouble) option.ofst_start,
                                                       (gdouble) option.ofst_end);
-                addr = ofst * option.blk_sz;
+                addr = ofst * option.blk_sz + option.misalign;
                 if (lseek64(fd, addr, SEEK_SET) == -1){
                     perror("do_iostress:lseek64");
                     exit(EXIT_FAILURE);
                 }
-
                 g_timer_start(timer);
                 if (option.read) {
                     iostress_readall(fd, buf, option.blk_sz);
@@ -391,7 +560,7 @@ do_iostress(th_arg_t *th_arg)
         }
     } else if (option.seq) {
         ofst = option.ofst_start + ((option.ofst_end - option.ofst_start) * th_arg->id) / option.multi;
-        addr = ofst * option.blk_sz;
+        addr = ofst * option.blk_sz + option.misalign;
         if (lseek64(fd, addr, SEEK_SET) == -1){
             perror("do_iostress:lseek64");
             exit(EXIT_FAILURE);
@@ -411,7 +580,7 @@ do_iostress(th_arg_t *th_arg)
                 ofst ++;
                 if (ofst >= option.ofst_end) {
                     ofst = option.ofst_start;
-                    addr = ofst * option.blk_sz;
+                    addr = ofst * option.blk_sz + option.misalign;
                     if (lseek64(fd, addr, SEEK_SET) == -1){
                         perror("do_iostress:lseek64");
                         exit(EXIT_FAILURE);
@@ -434,6 +603,16 @@ void *
 thread_handler(void *arg)
 {
     th_arg_t *th_arg = (th_arg_t *) arg;
+    thread_assignment_t *tass;
+
+    if (option.assigns != NULL){
+        tass = option.assigns[th_arg->id];
+        if (tass != NULL){
+            sched_setaffinity(syscall(SYS_gettid),
+                              NPROCESSOR,
+                              &tass->mask);
+        }
+    }
 
     do_iostress(th_arg);
 
@@ -454,6 +633,10 @@ main(gint argc, gchar **argv)
 
     parse_args(&argc, &argv);
 
+    if (option.noop == TRUE){
+        print_option();
+        exit(EXIT_SUCCESS);
+    }
     if (option.verbose){
         print_option();
     }
@@ -520,6 +703,14 @@ main(gint argc, gchar **argv)
         g_free(th_args[i].self);
     }
     g_free(th_args);
+
+    g_free(option.assignment_str);
+    if (option.assigns != NULL){
+        for(i = 0; i < option.multi; i++){
+            g_free(option.assigns[i]);
+        }
+        g_free(option.assigns);
+    }
 
     return 0;
 }

@@ -13,26 +13,21 @@ def system_(*args)
 end
 
 def_parameters do
-  # variable :blocksize => [2**18, 2**17, 2**16, 2**15, 2**14, 2**13]
-  # variable :blocksize => (8..19).map{|x| 2**x} + (5..16).map{|x| 2**x * 10}
-  variable :blocksize => (9..19).map{|x|
+  variable :blocksize => [512, 2**16]
+  variable :pattern => [:random]
+  variable :mode => [:read] # [:read, :write]
+  # variable :multiplicity => (1..10).map{|x| 2**x}.shuffle # (1..64).to_a.shuffle
+  variable :multiplicity => (0..8).map{|x|
     base = 2**x
-    sample = 2**([3,[0, x - 9].max].min)
+    sample = 2**([3,[0, x].max].min)
     ret = []
     sample.times{|y|
       ret.push(base + y * base / sample)
     }
     ret
   }.flatten.shuffle
-  # variable :pattern => [:sequential, :random]
-  variable :pattern => [:random]
-  variable :mode => [:read] # [:read, :write]
 
-  variable :multiplicity => [1]
-  parameter :thread_affinity => "0:8"
-  # parameter :thread_affinity => (0..7).map{|x| "#{2*x}-#{2*x+1}:#{x+8}"}.join(",")
-
-  variable :device => ["fioa", "fiob", "fioc", "fiod"]
+  variable :device => ["fioa", "fiob"]
   parameter :direct_io => true
   parameter :timeout => 30
   parameter :use_systemtap => false
@@ -58,7 +53,7 @@ end
 
 def_routine do |plan, params|
   ENV['LANG'] = "C"
-  # Cpufreq::Config.set(Cpufreq::Config.new(:governor => :performance))
+  Cpufreq::Config.set(Cpufreq::Config.new(:governor => :performance))
 
   env_dump = Hash.new
   env_dump[:num_processor] = SysUtils.num_processors
@@ -67,7 +62,7 @@ def_routine do |plan, params|
   params[:device_or_file] = "/dev/#{params[:device]}"
 
   system_("echo noop > /sys/block/#{params[:device]}/queue/scheduler")
-  system_("./src/micbench_io --direct -t 10 -b 64k -m 32 --rand -v #{params[:device_or_file]} # disturb cache")
+  # system_("./src/micbench_io --direct -t 10 -b 64k -m 32 --rand -v #{params[:device_or_file]} # disturb cache")
 
   begin
     printf("multi: %d, mode: %s, pattern %s, blocksize: %s\n",
@@ -101,9 +96,6 @@ def_routine do |plan, params|
         if params[:pattern] == :random
           args += ["--rand"]
         end
-        if params[:thread_affinity]
-          args += ["-A", params[:thread_affinity]]
-        end
         args += ["--blocksize", params[:blocksize]]
         if params[:direct_io]
           args += ["--direct"]
@@ -133,7 +125,7 @@ def_routine do |plan, params|
                      err.class.to_s, err.message,
                      err.backtrace.join("\n"))
     send_mail("[error report] #{plan.title}",
-              ["hayamiz.mobi@gmail.com"],
+              ["hayamiz@softbank.ne.jp"],
               errmsg + "\n\n" + params.inspect)
     exit(1)
   end
@@ -150,15 +142,15 @@ end
 
 def_cleanup do |plan|
   send_mail("[report] #{plan.title}",
-            ["hayamiz.mobi@gmail.com"],
+            ["hayamiz@docomo.ne.jp"],
             "finished")
   FileUtils.chown_R(ENV['USER'], nil, [plan.jkr_env.jkr_result_dir],
                     :verbose => true)
 end
 
 def_analysis do |plan|
-  use_script :io_size
-  io_analyze(plan)
+  use_script :io_multi
+  iostress_analyze(plan)
 end
 
 def h(num)
