@@ -16,4 +16,6 @@ function prependpath(){
 USER=haya
 
 prependpath /home/$USER/$(hostname -s)/usr/bin
-prependpath $(dirname $(readlink -f $0))/root/usr/bin
+prependpath /home/$USER/$(hostname -s)/repos/jkr/bin
+prependpath $(pwd)/root/usr/bin
+export RUBYLIB=/home/haya/miura/repos/jkr/lib:$RUBYLIB
