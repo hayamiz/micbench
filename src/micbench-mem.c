@@ -566,7 +566,7 @@ main(gint argc, gchar **argv)
                           mmap_size,
                           MPOL_BIND,
                           &args[i].assign_spec->nodemask,
-                          1<<(numa_max_node()+1),
+                          numa_max_node()+1,
                           MPOL_MF_STRICT)
                     != 0){
                     switch(errno){
