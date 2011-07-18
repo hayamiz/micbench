@@ -392,18 +392,8 @@ do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_siz
     register guint64 t0, t1;
     register gint cswch_counter = 0;
 
-    if (option.cpuusage < 100) {
-        iter_count = 16 * KIBI;
-    } else {
-        if (option.size > MEBI) {
-            iter_count = KIBI / 8;
-        } else {
-            iter_count = KIBI;
-        }
-    }
-    if (iter_count == 0) {
-        iter_count = 1;
-    }
+    iter_count = KIBI;
+    g_printerr("outer loop iteration: %lu\n", iter_count);
 
     // initialize pointer loop
     rand = g_rand_new_with_seed(syscall(SYS_gettid) + time(NULL));
