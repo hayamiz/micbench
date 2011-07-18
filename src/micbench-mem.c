@@ -396,7 +396,7 @@ do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_siz
         iter_count = 16 * KIBI;
     } else {
         if (option.size > MEBI) {
-            iter_count = KIBI;
+            iter_count = KIBI / 8;
         } else {
             iter_count = KIBI;
         }
