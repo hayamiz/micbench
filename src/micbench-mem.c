@@ -674,7 +674,7 @@ main(gint argc, gchar **argv)
             "total_clk\t%ld\n"
             "exec_time\t%lf\n"
             "ops_per_sec\t%le\n"
-            "clk_per_ops\t%le\n",
+            "clk_per_op\t%le\n",
             (option.seq ? "sequential" : "random"),
             option.multi,
             (option.local ? "true" : "false"),
