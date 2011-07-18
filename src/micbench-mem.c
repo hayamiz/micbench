@@ -409,6 +409,8 @@ do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_siz
     gulong num_cacheline;
     guint32 ofst;
     num_cacheline = working_size / 64;
+
+    GTimer *tt = g_timer_new(); g_timer_start(tt);
     for(i = 0; i < num_cacheline; i++){
         glong *ptr1, *ptr1_succ, *ptr2, *ptr2_succ;
     retry:
@@ -446,6 +448,8 @@ do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_siz
             exit(1);
         }
     }
+    g_printerr("shuffle time: %f\n", g_timer_elapsed(tt, NULL));
+    g_timer_start(tt);
 
     // check loop
     gulong counter;
@@ -461,11 +465,13 @@ do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_siz
         g_printerr("initialization failed. counter=%ld\n", counter);
         exit(EXIT_FAILURE);
     }
+    g_printerr("shuffle-validation time: %f\n", g_timer_elapsed(tt, NULL));
 
     gdouble t = 0;
     gdouble uf = (100 - option.cpuusage) / option.cpuusage; // cpu usage factor
     gint j = 0;
     struct timespec sleeptime;
+    g_printerr("start loop\n");
     g_timer_start(timer);
     while((t = g_timer_elapsed(timer, NULL)) < option.timeout){
         // g_print("loop\n");
@@ -580,8 +586,11 @@ main(gint argc, gchar **argv)
                 }
             }
             // initialize memories and force allocation of physical memory
+            GTimer *tt = g_timer_new(); g_timer_start(tt);
             memset(args[i].working_area, 1, mmap_size);
             memset(args[i].working_area, 0, mmap_size);
+            g_printerr("memset time: %f\n", g_timer_elapsed(tt, NULL));
+
         }
     } else {
         working_area = mmap(NULL,
