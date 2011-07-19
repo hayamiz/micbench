@@ -63,23 +63,23 @@ EOS
 end
 
 def generate(out)
+  region_size = 1024 # bytes
   out.puts <<EOS
 __asm__ volatile(
 "#seq inner loop\\n"
 EOS
-  (1024 / 8).times do |idx|
+  (region_size / 8).times do |idx|
     rnum = idx % $regnum + 8
     ofst = idx * 8
     out.puts <<EOS
 "movq	#{ofst}(%%rax), %%r#{rnum}\\n"
-"addq	$1, #{ofst}(%%rax)\\n"
 
 EOS
   end
 
   destructed_regs = (0..($regnum - 1)).map{|i| sprintf('"%%r%d"', i+8)}.join(", ")
   out.puts <<EOS
-"addq	$1024, %0\\n"
+"addq	$#{region_size}, %0\\n"
 : "=a" (ptr)
 : "0" (ptr)
 : #{destructed_regs});
