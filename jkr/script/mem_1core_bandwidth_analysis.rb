@@ -10,7 +10,7 @@ def mem_bandwidth_analyze(plan)
   results = get_results
 
   results = results.map do |ret|
-    ret[:label] = "#{ret[:params][:pattern]}-#{h(ret[:params][:memsize])}"
+    ret[:label] = "#{ret[:params][:pattern]}-#{h(ret[:params][:memsize])}-#{ret[:params][:assign]}"
     ret
   end
 
@@ -144,7 +144,7 @@ def plot_size_rt(results)
   ytics_log = (1..3).map do |e|
     e *= 10
     size = 2 ** e
-    sprintf('"%s" %d', h(size), size)
+    sprintf('"%s" %f', h(size), size / 2.0**30)
   end.join(",")
 
   xtics = results.map{|ret| ret[:size]}.uniq.sort.select{|x| x > 0}
@@ -169,7 +169,7 @@ def plot_size_rt(results)
                :title => "Memory access bandwidth with 1 core",
                :plot_data => plot_data_spec,
                :other_options => <<EOS
-set key left top
+set key left bottom
 set logscale x
 set ytics (#{ytics})
 set xtics (#{xtics_str})
@@ -186,10 +186,10 @@ EOS
                :title => "Memory access bandwidth with 1 core",
                :plot_data => plot_data_spec,
                :other_options => <<EOS
-set key left top
+set key left bottom
 set logscale x
 set logscale y
-set ytics (#{ytics_log})
+set ytics (#{ytics})
 set xtics (#{xtics_str})
 EOS
                )
