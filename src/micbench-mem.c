@@ -386,7 +386,7 @@ do_memory_stress_seq(perf_counter_t* pc,
         }
         t1 = read_tsc();
         pc->clk += t1 - t0;
-        pc->ops += MEM_INNER_LOOP_SEQUENTIAL_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQUENTIAL_REGION_SIZE) * iter_count;
+        pc->ops += MEM_INNER_LOOP_SEQ_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQ_REGION_SIZE) * iter_count;
         if (option.cpuusage < 100){
             gdouble timeslice = g_timer_elapsed(timer, NULL) - t - 0.002 * (option.cpuusage / 40)*(option.cpuusage / 40);
             gdouble sleepsec = timeslice * uf;
@@ -737,19 +737,26 @@ main(gint argc, gchar **argv)
             "context_switch\t%d\n"
             "page_size\t%ld\n"
             "size\t%ld\n"
-            "total_ops\t%ld\n"
-            "total_clk\t%ld\n"
-            "exec_time\t%lf\n"
-            "ops_per_sec\t%le\n"
-            "clk_per_op\t%le\n"
-            "total_exec_time\t%lf\n",
+           ,
             (option.seq ? "sequential" : "random"),
             option.multi,
             (option.local ? "true" : "false"),
             (option.assign_spec_str == NULL ? "null" : option.assign_spec_str),
             option.num_cswch,
             PAGE_SIZE,
-            option.size,
+            option.size
+        );
+    if (option.seq == TRUE) {
+        g_print("stride_size\t%d\n",
+                tp * MEM_INNER_LOOP_SEQ_STRIDE_SIZE / (2 << 30));
+    }
+
+    g_print("total_ops\t%ld\n"
+            "total_clk\t%ld\n"
+            "exec_time\t%lf\n"
+            "ops_per_sec\t%le\n"
+            "clk_per_op\t%le\n"
+            "total_exec_time\t%lf\n",
             ops,
             clk,
             wallclocktime,
@@ -757,6 +764,11 @@ main(gint argc, gchar **argv)
             rt,
             g_timer_elapsed(timer, NULL)
         );
+    if (option.seq == TRUE) {
+        g_print("GB_per_sec\t%lf\n",
+                tp * MEM_INNER_LOOP_SEQ_STRIDE_SIZE / 1024 / 1024 / 1024);
+    }
+
 
     if (option.local == TRUE){
         for(i = 0;i < option.multi;i++){
