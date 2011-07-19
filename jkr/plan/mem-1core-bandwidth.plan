@@ -35,7 +35,7 @@ def_parameters do
 
   parameter :multi => 1
 
-  variable :assign => [0].map{|mnode| "0:0:#{mnode}"}
+  variable :assign => [0, 1, 3].map{|mnode| "0:0:#{mnode}"}
 
   parameter :sys_monitor_interval => 1
   parameter :duration => 10
