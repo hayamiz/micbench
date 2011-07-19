@@ -29,11 +29,12 @@ def parse_result(plan, result_id)
     end
     response_time = memstress["clk_per_op"].to_f
     throughput = memstress["ops_per_sec"].to_f
+    bandwidth = memstress["GB_per_sec"].to_f
     size = memstress["size"].to_i
 
     ret[:response_time] = response_time
     ret[:throughput] = throughput
-    ret[:bandwidth] = throughput * 8
+    ret[:bandwidth] = bandwidth
     ret[:size] = size
 
     mpstat_data = DataUtils.read_mpstat(result_file_name(result_id, "mpstat.txt")).select{|block|
