@@ -23,4 +23,11 @@ AM_PATH_GLIB_2_0([],
                  [AC_MSG_ERROR([GLib >= $GLIB_REQUIRED required.])],
                  [gmodule gobject gthread gio])
 
+dnl ******************************
+dnl Check for libnuma
+dnl ******************************
+
+AC_CHECK_LIB(numa, numa_available, [], [AC_MSG_ERROR([libnuma required.])])
+
+
 AC_OUTPUT
