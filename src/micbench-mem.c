@@ -370,7 +370,7 @@ do_memory_stress_seq(perf_counter_t* pc,
         }
         t1 = read_tsc();
         pc->clk += t1 - t0;
-        pc->ops += working_size / sizeof(glong) * iter_count;
+        pc->ops += MEM_INNER_LOOP_SEQUENTIAL_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQUENTIAL_REGION_SIZE) * iter_count;
         if (option.cpuusage < 100){
             gdouble timeslice = g_timer_elapsed(timer, NULL) - t - 0.002 * (option.cpuusage / 40)*(option.cpuusage / 40);
             gdouble sleepsec = timeslice * uf;

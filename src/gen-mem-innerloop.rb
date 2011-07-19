@@ -64,13 +64,16 @@ end
 
 def generate(out)
   region_size = 1024 # bytes
+  stride_size = 8
   out.puts <<EOS
+#define	MEM_INNER_LOOP_SEQUENTIAL_NUM_OPS	#{(region_size / stride_size)}
+#define	MEM_INNER_LOOP_SEQUENTIAL_REGION_SIZE	#{(region_size)}
 __asm__ volatile(
 "#seq inner loop\\n"
 EOS
-  (region_size / 8).times do |idx|
+  (region_size / stride_size).times do |idx|
     rnum = idx % $regnum + 8
-    ofst = idx * 8
+    ofst = idx * stride_size
     out.puts <<EOS
 "movq	#{ofst}(%%rax), %%r#{rnum}\\n"
 
