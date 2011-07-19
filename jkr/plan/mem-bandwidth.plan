@@ -15,18 +15,14 @@ def_parameters do
   parameter :cores_per_cpu => 8
   parameter :command => "./src/micbench-mem"
 
-  parameter :memsize => 2**30
+  parameter :memsize => 2**29
 
   # parameter :pattern => :sequential
   # parameter :pattern => :random
   parameter :pattern => :sequential
 
-  # thread affinity
-  # parameter :assign => "0:0:0"
-  # variable :assign => ["0:0:0", "0:0:1"]
-  variable :multi => [1, 2, 3, 4, 5, 6, 7, 8]
+  variable :multi => [1, 2, 3, 4, 6, 8]
 
-  # variable :assign => (0..7).map{|mnode| "0:0:#{mnode}"}
   parameter :cpunode => 0
   # variable :memnode => [0, 1, 2, 3]
   variable :memnode => `numactl --show|grep membind|sed -e 's/^membind: //g'`.strip.split.map(&:to_i)
