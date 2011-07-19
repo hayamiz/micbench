@@ -77,6 +77,8 @@ typedef struct {
     glong *working_area; // working area
     glong working_size; // size of working area
     perf_counter_t pc;
+
+    pthread_barrier_t *barrier;
 } th_arg_t;
 
 static GOptionEntry entries[] =
@@ -104,8 +106,8 @@ static GOptionEntry entries[] =
 
 // prototype declarations
 guint64 read_tsc(void);
-void do_memory_stress_seq(perf_counter_t* pc, glong *working_area, glong working_size);
-void do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_size);
+void do_memory_stress_seq(perf_counter_t* pc, glong *working_area, glong working_size, pthread_barrier_t *barrier);
+void do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_size, pthread_barrier_t *barrier);
 
 // generate random number which is more than or equal to 'from' and less than 'to' - 1
 gulong
@@ -285,9 +287,9 @@ thread_handler(void *arg)
 
     if (option.cpuusage > 0) {
         if (option.rand == TRUE){
-            do_memory_stress_rand(&th_arg->pc, th_arg->working_area, th_arg->working_size);
+            do_memory_stress_rand(&th_arg->pc, th_arg->working_area, th_arg->working_size, th_arg->barrier);
         } else {
-            do_memory_stress_seq(&th_arg->pc, th_arg->working_area, th_arg->working_size);
+            do_memory_stress_seq(&th_arg->pc, th_arg->working_area, th_arg->working_size, th_arg->barrier);
         }
     } else {
         sleep(option.timeout);
@@ -321,7 +323,10 @@ read_tsc(void)
 // }
 
 void
-do_memory_stress_seq(perf_counter_t* pc, glong *working_area, glong working_size)
+do_memory_stress_seq(perf_counter_t* pc,
+                     glong *working_area,
+                     glong working_size,
+                     pthread_barrier_t *barrier)
 {
     gulong iter_count;
     gulong i;
@@ -345,6 +350,8 @@ do_memory_stress_seq(perf_counter_t* pc, glong *working_area, glong working_size
     gdouble uf = (100 - option.cpuusage) / option.cpuusage; // cpu usage factor
     gint j = 0;
     struct timespec sleeptime;
+
+    pthread_barrier_wait(barrier);
     g_timer_start(timer);
     while((t = g_timer_elapsed(timer, NULL)) < option.timeout){
         // g_print("loop\n");
@@ -381,7 +388,10 @@ do_memory_stress_seq(perf_counter_t* pc, glong *working_area, glong working_size
 }
 
 void
-do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_size)
+do_memory_stress_rand(perf_counter_t* pc,
+                      glong *working_area,
+                      glong working_size,
+                      pthread_barrier_t *barrier)
 {
     gulong iter_count;
     register gulong i;
@@ -475,10 +485,18 @@ do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_siz
         g_timer_destroy(tt);
     }
 
+    // go through pointer loop for evicting cache lines
+    ptr = (glong *) *ptr_start;
+    while(ptr != ptr_start){
+        ptr = (glong *) *ptr;
+    }
+
     gdouble t = 0;
     gdouble uf = (100 - option.cpuusage) / option.cpuusage; // cpu usage factor
     gint j = 0;
     struct timespec sleeptime;
+
+    pthread_barrier_wait(barrier);
     g_timer_start(timer);
     while((t = g_timer_elapsed(timer, NULL)) < option.timeout){
         // g_print("loop\n");
@@ -515,18 +533,24 @@ do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_siz
 gint
 main(gint argc, gchar **argv)
 {
-    th_arg_t *args;
-    glong *working_area;
-    gint i;
+    th_arg_t          *args;
+    glong             *working_area;
+    gint               i;
+    pthread_barrier_t *barrier;
+
     parse_args(&argc, &argv);
 
     args = g_malloc(sizeof(th_arg_t) * option.multi);
+    barrier = g_malloc(sizeof(pthread_barrier_t));
+    pthread_barrier_init(barrier, NULL, option.multi);
+
     for(i = 0;i < option.multi;i++){
         args[i].id = i;
         args[i].self = g_malloc(sizeof(pthread_t));
         args[i].assign_spec = NULL;
         args[i].pc.ops = 0;
         args[i].pc.clk = 0;
+        args[i].barrier = barrier;
     }
 
     if (option.assign_spec_str != NULL) {
@@ -663,6 +687,7 @@ main(gint argc, gchar **argv)
         pthread_join(*args[i].self, NULL);
     }
     g_timer_stop(timer);
+    pthread_barrier_destroy(barrier);
 
     for(i = 0;i < option.multi;i++){
         g_free(args[i].self);
