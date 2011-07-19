@@ -90,6 +90,8 @@ static GOptionEntry entries[] =
      "Running time of memory access test (in sec) (default: 60sec)"},
     {"rand", 'R', 0, G_OPTION_ARG_NONE, &option.rand,
      "Random memory access (default: sequential access)"},
+    {"seq", 'S', 0, G_OPTION_ARG_NONE, &option.seq,
+     "Sequential memory access (default)"},
     {"local", 'L', 0, G_OPTION_ARG_NONE, &option.local,
      "Allocate individual memory region for each thread (default: sharing one region)"},
     {"assign", 'a', 0, G_OPTION_ARG_STRING, &option.assign_spec_str,
@@ -145,6 +147,7 @@ parse_args(gint *argc, gchar ***argv)
     option.timeout = 60;
     option.verbose = FALSE;
     option.rand = FALSE;
+    option.seq = TRUE;
     option.local = FALSE;
     option.assign_spec_str = NULL;
     option.sz_str = "1M";
@@ -187,13 +190,23 @@ parse_args(gint *argc, gchar ***argv)
     }
     if (size % KIBI != 0){
         g_print("SIZE must be multiples of 1024.\n");
-        exit(EXIT_FAILURE);
+        goto error;
+    }
+    if (option.seq == TRUE && size % (4 * KIBI) != 0){
+        g_print("SIZE must be multiples of 4096 for sequential access mode.\n");
+        goto error;
     }
     if (size < 1) {
         g_print("Invalid size specifier: %s\n", option.sz_str);
-        exit(EXIT_FAILURE);
+        goto error;
     }
     option.size = (gint64) size;
+
+    return;
+error:
+    g_print(g_option_context_get_help(context, FALSE, NULL));
+    g_option_context_free(context);
+    exit(EXIT_FAILURE);
 }
 
 
