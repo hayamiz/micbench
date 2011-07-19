@@ -31,7 +31,7 @@ def_parameters do
   variable :memnode => [0, 1, 2, 3]
 
   parameter :sys_monitor_interval => 1
-  parameter :duration => 5
+  parameter :duration => 10
 
   # oprofile events
   parameter :op_sample_duration => 10
