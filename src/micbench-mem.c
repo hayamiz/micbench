@@ -678,6 +678,7 @@ main(gint argc, gchar **argv)
             "local\t%s\n"
             "assign_spec\t%s\n"
             "context_switch\t%d\n"
+            "page_size\t%ld\n"
             "size\t%ld\n"
             "total_ops\t%ld\n"
             "total_clk\t%ld\n"
@@ -689,6 +690,7 @@ main(gint argc, gchar **argv)
             (option.local ? "true" : "false"),
             (option.assign_spec_str == NULL ? "null" : option.assign_spec_str),
             option.num_cswch,
+            PAGE_SIZE,
             option.size,
             ops,
             clk,
