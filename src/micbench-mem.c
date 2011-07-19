@@ -612,12 +612,23 @@ main(gint argc, gchar **argv)
             g_print("Cannot allocate memory\n");
             exit(EXIT_FAILURE);
         }
+
+        /*
+          http://www.gossamer-threads.com/lists/linux/kernel/461213
+
+          > And not to make things even more confusing, but the way
+          > things are designed now, the value I need to pass to mbind()
+          > is numa_max_node()+2.  Very confusing.
+
+          maxnodes of mbind(3) seems to require numa_max_node()+2, not
+          numa_max_node()+1
+         */
         if (args[0].assign_spec != NULL){
             if (mbind(working_area,
                       mmap_size,
                       MPOL_BIND,
                       &args[0].assign_spec->nodemask,
-                      1<<(numa_max_node()+1),
+                      numa_max_node()+2,
                       MPOL_MF_STRICT) != 0){
                 switch(errno){
                 case EFAULT:
