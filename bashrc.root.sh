@@ -18,4 +18,5 @@ USER=haya
 prependpath /home/$USER/$(hostname -s)/usr/bin
 prependpath /home/$USER/$(hostname -s)/repos/jkr/bin
 prependpath $(pwd)/root/usr/bin
+export LD_LIBRARY_PATH="/home/$USER/$(hostname -s)/usr/lib:${LD_LIBRARY_PATH}"
 export RUBYLIB=/home/haya/$(hostname -s)/repos/jkr/lib:$RUBYLIB
