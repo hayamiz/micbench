@@ -67,6 +67,7 @@ struct {
 typedef struct perf_counter_rec {
     guint64 ops;
     guint64 clk;
+    gdouble wallclocktime;
 } perf_counter_t;
 
 typedef struct {
@@ -383,6 +384,8 @@ do_memory_stress_seq(perf_counter_t* pc,
             }
         }
     }
+    if(option.verbose == TRUE) g_print("loop end: t=%lf\n", t);
+    pc->wallclocktime = t;
 
     g_timer_destroy(timer);
 }
@@ -525,6 +528,8 @@ do_memory_stress_rand(perf_counter_t* pc,
             }
         }
     }
+    g_print("loop end: t=%lf\n", t);
+    pc->wallclocktime = t;
 
     g_timer_destroy(timer);
 }
@@ -699,13 +704,16 @@ main(gint argc, gchar **argv)
 
     gint64 ops = 0;
     gint64 clk = 0;
+    gdouble wallclocktime = 0.0;
     for(i = 0;i < option.multi;i++){
         ops += args[i].pc.ops;
         clk += args[i].pc.clk;
+        wallclocktime += args[i].pc.wallclocktime;
     }
 
+    wallclocktime /= option.multi;
     gdouble rt = ((gdouble)clk)/ops;
-    gdouble tp = ops / g_timer_elapsed(timer, NULL);
+    gdouble tp = ops / wallclocktime;
 
     // print summary
     g_print("access_pattern\t%s\n"
@@ -719,7 +727,8 @@ main(gint argc, gchar **argv)
             "total_clk\t%ld\n"
             "exec_time\t%lf\n"
             "ops_per_sec\t%le\n"
-            "clk_per_op\t%le\n",
+            "clk_per_op\t%le\n"
+            "total_exec_time\t%lf\n",
             (option.seq ? "sequential" : "random"),
             option.multi,
             (option.local ? "true" : "false"),
@@ -729,9 +738,10 @@ main(gint argc, gchar **argv)
             option.size,
             ops,
             clk,
-            g_timer_elapsed(timer, NULL),
+            wallclocktime,
             tp,
-            rt
+            rt,
+            g_timer_elapsed(timer, NULL)
         );
 
     if (option.local == TRUE){
