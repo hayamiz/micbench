@@ -10,7 +10,7 @@ def mem_bandwidth_analyze(plan)
   results = get_results
 
   results = results.map do |ret|
-    ret[:label] = "#{ret[:params][:pattern]}-#{h(ret[:params][:memsize])}-#{ret[:params][:multi]}multi-cpunode#{ret[:params][:cpunode]}-memnode#{ret[:params][:memnode]}"
+    ret[:label] = "#{ret[:params][:pattern]}-#{h(ret[:params][:memsize])}-multi#{ret[:params][:multi]}-cpunode#{ret[:params][:cpunode]}-memnode#{ret[:params][:memnode]}"
     ret
   end
 
@@ -137,13 +137,13 @@ def plot_size_rt(results)
 
   ytics = (1..10).map do |x|
     size = 2 ** 30 * x
-    sprintf('"%s" %f', h(size), size.to_f)
+    sprintf('"%s" %f', h(size), size.to_f / 2.0 ** 30)
   end.join(",")
 
   ytics_log = (1..3).map do |e|
     e *= 10
     size = 2 ** e
-    sprintf('"%s" %d', h(size), size)
+    sprintf('"%s" %d', h(size), size.to_f / 2.0 ** 30)
   end.join(",")
 
   plot_scatter(:output => common_file_name("bandwidth.eps"),
@@ -151,12 +151,11 @@ def plot_size_rt(results)
                :xlabel => "# threads",
                :ylabel => "bandwitdh [bytes/sec]",
                :xrange => nil,
-               :yrange => "[0:#{10 * 2**30}]",
+               :yrange => "[0:]",
                :title => "Memory access bandwidth",
                :plot_data => plot_data_spec,
                :other_options => <<EOS
 set key left top
-set ytics (#{ytics})
 EOS
                )
 
@@ -172,7 +171,6 @@ EOS
                :other_options => <<EOS
 set key left top
 set logscale y
-set ytics (#{ytics_log})
 EOS
                )
 end
