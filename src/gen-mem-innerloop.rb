@@ -67,8 +67,9 @@ def generate(out)
   stride_size = 16 # 128bit-wide SSE register
   num_register = 16 # xmm* SSE registers
   out.puts <<EOS
-#define	MEM_INNER_LOOP_SEQUENTIAL_NUM_OPS	#{(region_size / stride_size)}
-#define	MEM_INNER_LOOP_SEQUENTIAL_REGION_SIZE	#{(region_size)}
+#define	MEM_INNER_LOOP_SEQ_NUM_OPS	#{(region_size / stride_size)}
+#define	MEM_INNER_LOOP_SEQ_REGION_SIZE	#{(region_size)}
+#define	MEM_INNER_LOOP_SEQ_STRIDE_SIZE	#{(stride_size)}
 __asm__ volatile(
 "#seq inner loop\\n"
 EOS
