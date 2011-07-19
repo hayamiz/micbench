@@ -63,8 +63,9 @@ EOS
 end
 
 def generate(out)
-  region_size = 1024 # bytes
-  stride_size = 8
+  region_size = 4096 # bytes
+  stride_size = 16 # 128bit-wide SSE register
+  num_register = 16 # xmm* SSE registers
   out.puts <<EOS
 #define	MEM_INNER_LOOP_SEQUENTIAL_NUM_OPS	#{(region_size / stride_size)}
 #define	MEM_INNER_LOOP_SEQUENTIAL_REGION_SIZE	#{(region_size)}
@@ -72,15 +73,15 @@ __asm__ volatile(
 "#seq inner loop\\n"
 EOS
   (region_size / stride_size).times do |idx|
-    rnum = idx % $regnum + 8
+    rnum = idx % num_register
     ofst = idx * stride_size
     out.puts <<EOS
-"movq	#{ofst}(%%rax), %%r#{rnum}\\n"
+"movdqa	#{ofst}(%%rax), %%xmm#{rnum}\\n"
 
 EOS
   end
 
-  destructed_regs = (0..($regnum - 1)).map{|i| sprintf('"%%r%d"', i+8)}.join(", ")
+  destructed_regs = (0..15).map{|i| sprintf('"%%xmm%d"', i)}.join(", ")
   out.puts <<EOS
 "addq	$#{region_size}, %0\\n"
 : "=a" (ptr)
