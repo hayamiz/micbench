@@ -22,6 +22,8 @@
 
 #define NPROCESSOR (sysconf(_SC_NPROCESSORS_ONLN))
 
+#define PAGE_SIZE (sysconf(_SC_PAGESIZE))
+
 // unit
 #define KILO 1000
 #define KIBI 1024
@@ -542,7 +544,7 @@ main(gint argc, gchar **argv)
     }
 
     size_t mmap_size = option.size;
-    size_t align = MEBI; // sysconf(_SC_PAGESIZE);
+    size_t align = PAGE_SIZE;
     if (mmap_size % align != 0){
         mmap_size += (align - mmap_size % align);
     }
@@ -566,7 +568,7 @@ main(gint argc, gchar **argv)
                           mmap_size,
                           MPOL_BIND,
                           &args[i].assign_spec->nodemask,
-                          numa_max_node()+1,
+                          numa_max_node()+2,
                           MPOL_MF_STRICT)
                     != 0){
                     switch(errno){
