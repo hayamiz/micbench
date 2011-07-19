@@ -263,11 +263,13 @@ parse_assign_specs(gint num_threads, thread_assign_spec_t **specs, const gchar *
 
             specs[thread_id]->nodemask = 1 << mem_node_id;
 
-            g_printerr("assign spec: thread_id=%d, core_id=%d, mem_node_id=%d\n",
-                       thread_id, core_id, mem_node_id);
+            if(option.verbose == TRUE)
+                g_printerr("assign spec: thread_id=%d, core_id=%d, mem_node_id=%d\n",
+                           thread_id, core_id, mem_node_id);
         } else {
-            g_printerr("assign spec: thread_id=%d, core_id=%d\n",
-                       thread_id, core_id);
+            if(option.verbose == TRUE)
+                g_printerr("assign spec: thread_id=%d, core_id=%d\n",
+                           thread_id, core_id);
         }
     }
 
@@ -501,7 +503,6 @@ do_memory_stress_rand(perf_counter_t* pc,
     pthread_barrier_wait(barrier);
     g_timer_start(timer);
     while((t = g_timer_elapsed(timer, NULL)) < option.timeout){
-        // g_print("loop\n");
         t0 = read_tsc();
         ptr = working_area;
         for(i = 0;i < iter_count;i++){
