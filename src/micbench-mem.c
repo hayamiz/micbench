@@ -748,7 +748,7 @@ main(gint argc, gchar **argv)
         );
     if (option.seq == TRUE) {
         g_print("stride_size\t%d\n",
-                tp * MEM_INNER_LOOP_SEQ_STRIDE_SIZE / (2 << 30));
+                MEM_INNER_LOOP_SEQ_STRIDE_SIZE);
     }
 
     g_print("total_ops\t%ld\n"
