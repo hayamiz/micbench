@@ -405,7 +405,6 @@ do_memory_stress_rand(perf_counter_t* pc,
     register gint cswch_counter = 0;
 
     iter_count = KIBI;
-    g_printerr("outer loop iteration: %lu\n", iter_count);
 
     // initialize pointer loop
     rand = g_rand_new_with_seed(syscall(SYS_gettid) + time(NULL));
