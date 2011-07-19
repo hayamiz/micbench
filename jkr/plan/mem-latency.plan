@@ -22,18 +22,14 @@ def_parameters do
   #                       2**19, 2**22, 2**23,
   #                       2**24, 2**30, 2**31, 2**32, 2**33]
 
-#   sizes = (1..23).map{|x| 2**(10+x)}
-#   sizes += [(24 + 6)*1024*1024, (24 - 6)*1024*1024]
-#   sizes += [(32 + 8)*1024*1024]
-#   sizes += [(64 - 16)*1024]
-#   sizes += [(256 + 64)*1024, (256 - 64)*1024]
-# 
-#   sizes += [(16 + 4)*1024*1024, (16 - 4)*1024*1024]
-#   sizes += [(32 + 8)*1024*1024, (32 - 8)*1024*1024]
-# 
-#   sizes += [(8 + )*(2**30)]
+  sizes = (1..22).map{|x| 2**(10+x)}
+  sizes += [(24 + 6)*1024*1024, (24 - 6)*1024*1024]
+  sizes += [(32 + 8)*1024*1024]
+  sizes += [(64 - 16)*1024]
+  sizes += [(256 + 64)*1024, (256 - 64)*1024]
 
-  sizes = (22..26).map{|x| 2**(10+x)}
+  sizes += [(16 + 4)*1024*1024, (16 - 4)*1024*1024]
+  sizes += [(32 + 8)*1024*1024, (32 - 8)*1024*1024]
 
   sizes.sort!
   variable :memsize => sizes
@@ -45,11 +41,11 @@ def_parameters do
   # thread affinity
   # parameter :assign => "0:0:0"
   # variable :assign => ["0:0:0", "0:0:1"]
-  variable :assign => ["0:0:0"]
+  variable :assign => (0..7).map{|mnode| "0:0:#{mnode}"}
 
   parameter :sys_monitor_interval => 1
-  parameter :duration => 10
-  
+  parameter :duration => 5
+
   # oprofile events
   parameter :op_sample_duration => 10
   # parameter :op_events => ["LLC_MISSES:100000", "UOPS_EXECUTED:10000000",
@@ -62,7 +58,7 @@ def_parameters do
 
   variable :multi => [1]
 
-  variable :trial => (1..1).to_a # dummy variable
+  variable :trial => (1..5).to_a # dummy variable
 end
 
 def_prep do |plan|
@@ -70,8 +66,8 @@ def_prep do |plan|
   
   # warming up
   puts "Warming up system"
-  system_(plan.params[:command], "--rand", "-s", "100M", "-m", SysUtils.num_cores.to_s,
-          "-t", "5", "-L", ">/dev/null")
+  system_(plan.params[:command], "--rand", "--size", "100M", "--multi", SysUtils.num_cores.to_s,
+          "--timeout", "5", "--local", ">/dev/null")
 end
 
 def_routine do |plan, params|
@@ -124,10 +120,14 @@ def_routine do |plan, params|
 
         params[:start_time] = Time.now
         if params[:memsize] > 0
-          args = [params[:command], "-m", params[:multi], "-t", params[:duration].to_s,
-                  "-L", "-v", "-s", params[:memsize].to_s]
+          args = [params[:command],
+                  "--multi", params[:multi],
+                  "--timeout", params[:duration].to_s,
+                  "--local",
+                  "--verbose",
+                  "--size", params[:memsize].to_s]
           if params[:pattern] == :random
-            args << "-R"
+            args << "--rand"
           end
           if params[:assign]
             args += ["--assign", params[:assign]]
@@ -171,7 +171,7 @@ end
 
 
 def_cleanup do |plan|
-  send_mail("[report] #{plan.title}",
+  send_mail("[report] #{plan.title} #{Time.now.to_s}",
             ["hayamiz.mobi@gmail.com"],
             "finished")
 end
