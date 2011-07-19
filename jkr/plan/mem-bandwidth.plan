@@ -24,11 +24,11 @@ def_parameters do
   # thread affinity
   # parameter :assign => "0:0:0"
   # variable :assign => ["0:0:0", "0:0:1"]
-  variable :multi => [1, 2, 3, 4, 5, 6, 7, 8]
+  variable :multi => [1, 2, 3, 4, 6, 8]
 
   # variable :assign => (0..7).map{|mnode| "0:0:#{mnode}"}
   parameter :cpunode => 0
-  variable :memnode => [0]
+  variable :memnode => [0, 1, 2, 3]
 
   parameter :sys_monitor_interval => 1
   parameter :duration => 5
@@ -43,7 +43,7 @@ def_parameters do
   #                          "L1I:1000000:0x02"]
   parameter :op_events => []
 
-  variable :trial => (1..5).to_a # dummy variable
+  variable :trial => (1..10).to_a # dummy variable
 end
 
 def_prep do |plan|
