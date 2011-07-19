@@ -147,7 +147,7 @@ parse_args(gint *argc, gchar ***argv)
     option.timeout = 60;
     option.verbose = FALSE;
     option.rand = FALSE;
-    option.seq = TRUE;
+    option.seq = FALSE;
     option.local = FALSE;
     option.assign_spec_str = NULL;
     option.sz_str = "1M";
