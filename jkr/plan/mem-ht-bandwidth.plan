@@ -1,0 +1,193 @@
+# -*- mode: ruby -*-
+
+title "Measure memory latency"
+description "measure interference of HT in the same physical core"
+
+
+def system_(*args)
+  puts "system_: #{args.join(' ')}"
+  unless system(*args)
+    raise RuntimeError.new(args.join(" "))
+  end
+end
+
+def_parameters do
+  parameter :command => "./src/micbench-mem"
+
+#   sizes = (2..22).map{|x| 2**(10+x)}
+#   sizes += [(32 + 4)*1024]
+#   sizes += [(32 + 8)*1024]
+#   sizes += [(128 + 32)*1024]
+#   sizes += [(256 + 64)*1024, (256 - 64)*1024]
+# 
+#   sizes += [(16 + 4)*1024*1024, (16 - 4)*1024*1024]
+#   sizes += [(24 + 6)*1024*1024, (24 - 6)*1024*1024]
+#   sizes += [(32 + 8)*1024*1024, (32 - 8)*1024*1024]
+
+  sizes = [16 * 1024, 64 * 1024, 4 * 1024**2, 1024**3]
+
+  sizes.sort!
+  sizes.uniq!
+
+  variable :memsize => sizes
+
+  # parameter :pattern => :sequential
+  # parameter :pattern => :random
+  parameter :pattern => :sequential
+
+  memnodes = `numactl --show|grep membind|sed -e 's/^membind: //g'`.strip.split.map(&:to_i)
+
+  variable :assign => memnodes.map{|mnode| "0:0:#{mnode}"} + memnodes.map{|mnode| "0:0:#{mnode},1:1:#{mnode}"} + memnodes.map{|mnode| "0:0:#{mnode},1:2:#{mnode}"}
+  # parameter :multi is calculated from :assign
+
+  parameter :sys_monitor_interval => 1
+  parameter :duration => 10
+
+  # oprofile events
+  parameter :op_sample_duration => 10
+  # parameter :op_events => ["LLC_MISSES:100000", "UOPS_EXECUTED:10000000",
+  #                          "DTLB_LOAD_MISSES:1000000", "L2_RQSTS:1000000:0x40",
+  #                          "L1D_PREFETCH:1000000", "L2_TRANSACTIONS:1000000:0x08",
+  #                          "L2_HW_PREFETCH:1000000",
+  #                          "L2_RQSTS:1000000:0xaa", "LONGEST_LAT_CACHE:1000000", "DTLB_MISSES:1000000",
+  #                          "L1I:1000000:0x02"]
+  parameter :op_events => []
+
+  variable :trial => (1..5).to_a # dummy variable
+end
+
+def_prep do |plan|
+  ENV['LANG'] = "C"
+
+  # warming up
+  puts "Warming up system"
+  system_(plan.params[:command], "--rand", "--size", "24M", "--multi", SysUtils.num_cores.to_s,
+          "--timeout", "5", "--local", ">/dev/null")
+end
+
+def_routine do |plan, params|
+  ENV['LANG'] = "C"
+
+  begin
+    # SysUtils.cpu_cores.times do |idx|
+    #   unless system("cpufreq-set", "--cpu", idx.to_s, "--governor", "performance")
+    #     raise RuntimeError.new("cpufreq-set")
+    #   end
+    # end
+    params[:num_cores] = SysUtils.cpu_cores
+
+    puts "#{params[:pattern]}, #{params[:memsize]} bytes"
+    monitor_times = (params[:duration] / params[:sys_monitor_interval]).to_i
+    with_process2("mpstat", "-P", "ALL",
+                  params[:sys_monitor_interval],
+                  monitor_times, " > ", touch_result_file("mpstat.txt")) do
+      with_process2("iostat", "-d", "-x", "-k", "-t",
+                    params[:sys_monitor_interval],
+                    monitor_times, " > ", touch_result_file("iostat.txt")) do
+
+        # oprofile
+        if params[:op_events].size > 0
+          op_th = Thread.new {
+            puts("OProfile thread spawned")
+            wait_until = params[:duration] - params[:op_events].size * (params[:op_sample_duration]+15)
+            if wait_until < 0
+              wait_until = 60 # wait at least 1 minute
+            end
+            puts "oprofile thread wait #{wait_until} secs"
+            sleep wait_until
+            vmlinux = "/usr/lib/debug/lib/modules/"+`uname -r`.strip+"debug/vmlinux"
+            params[:op_events].each do |opevent|
+              puts opevent
+              system_("opcontrol", "--reset")
+              system_("opcontrol", "--vmlinux=#{vmlinux}")
+              system_("opcontrol", "--event=#{opevent}")
+              system_("opcontrol", "--start")
+              sleep params[:op_sample_duration]
+              system_("opcontrol", "--stop")
+              system_("opcontrol", "--shutdown")
+              sleep 5 # echo wait dumping
+              system("opreport", "-d", "-g", "-o", result_file_name("oprofile-"+opevent+".txt"))
+            end
+          }
+        else
+          op_th = nil
+        end
+
+        params[:start_time] = Time.now
+        if params[:memsize] > 0
+          unless params[:assign]
+            raise StandardError.new(":assign required.")
+          end
+          params[:multi] = params[:assign].split(",").size
+          args = [params[:command],
+                  "--multi", params[:multi],
+                  "--timeout", params[:duration].to_s,
+                  "--local",
+                  "--verbose",
+                  "--size", params[:memsize].to_s,
+                  "--assign", params[:assign]]
+          if params[:pattern] == :random
+            args << "--rand"
+          end
+          system_(args.join(" ") + " 1> #{result_file_name('micbench-mem.txt')} 2> #{result_file_name('micbench-mem-stderr.txt')}")
+        else
+          sleep params[:duration]
+        end
+        params[:end_time] = Time.now
+        op_th.join if op_th
+      end
+    end
+    with_result_file("params.txt"){|f|
+      f.puts "{"
+      params.each{|k, v| f.printf("%30s => %s,\n", k.inspect, v.inspect)}
+      f.puts "}"
+    }
+    with_result_file("params.dump"){|f|
+      Marshal.dump(params, f)
+    }
+
+    puts "Finished"
+  rescue Exception => err
+    puts "Error"
+    errmsg = sprintf("%s: %s\n%s",
+                     err.class.to_s, err.message,
+                     err.backtrace.join("\n"))
+    send_mail("[error report] #{plan.title}",
+              ["hayamiz.mobi@gmail.com"],
+              errmsg + "\n\n" + params.inspect)
+    raise err
+    exit(1)
+  end
+end
+
+def send_mail(subject, addrs, body, files = [])
+  attach_option = files.map{|file| "-a #{file}"}.join(" ")
+  IO.popen("mutt #{addrs.join(' ')} -s #{subject.inspect} #{attach_option}", "w+") do |io|
+    io.puts body
+  end
+end
+
+
+def_cleanup do |plan|
+  send_mail("[report] #{plan.title} #{Time.now.to_s}",
+            ["hayamiz.mobi@gmail.com"],
+            "finished")
+end
+
+def_analysis do |plan|
+  use_script :mem_1core_bandwidth_analysis
+
+  mem_bandwidth_analyze(plan)
+end
+
+def h(num)
+  if num >= 2 ** 30 && num % 2 ** 30 == 0
+    (num / 2**30).to_s+"GB"
+  elsif num >= 2 ** 20 && num % 2 ** 20 == 0
+    (num / 2**20).to_s+"MB"
+  elsif num >= 2 ** 10 && num % 2 ** 10 == 0
+    (num / 2**10).to_s+"KB"
+  else
+    num.to_s+"B"
+  end
+end
