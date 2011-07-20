@@ -16,6 +16,8 @@ micbench_mem_LDADD =				\
 	-lm					\
 	$(GLIB_LIBS)
 
+CLEANFILES = micbench-mem-inner.c micbench-mem-inner-rand.c
+
 micbench-mem.c: micbench-mem-inner.c micbench-mem-inner-rand.c
 
 micbench-mem-inner.c: ./gen-mem-innerloop.rb
