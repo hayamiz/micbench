@@ -12,7 +12,6 @@ def system_(*args)
 end
 
 def_parameters do
-  parameter :cores_per_cpu => 8
   parameter :command => "./src/micbench-mem"
 
   parameter :memsize => 2**30
@@ -40,7 +39,7 @@ def_parameters do
   #                          "L1I:1000000:0x02"]
   parameter :op_events => []
 
-  variable :trial => (1..10).to_a # dummy variable
+  variable :trial => (1..5).to_a # dummy variable
 end
 
 def_prep do |plan|
@@ -48,8 +47,8 @@ def_prep do |plan|
 
   # warming up
   puts "Warming up system"
-  system_(plan.params[:command], "--rand", "--size", "100M", "--multi", SysUtils.num_cores.to_s,
-          "--timeout", "5", "--local", ">/dev/null")
+  # system_(plan.params[:command], "--rand", "--size", "100M", "--multi", SysUtils.num_cores.to_s,
+  #         "--timeout", "5", "--local", ">/dev/null")
 end
 
 def_routine do |plan, params|
@@ -100,8 +99,29 @@ def_routine do |plan, params|
           op_th = nil
         end
 
+        num_cores = `grep 'core id' /proc/cpuinfo|sort|uniq|wc -l`.to_i
+        num_processors = `grep 'physical id' /proc/cpuinfo|sort|uniq|wc -l`.to_i
+        num_logical_cpus = `grep 'processor' /proc/cpuinfo|sort|uniq|wc -l`.to_i
+        params[:num_cores] = num_cores
+        params[:num_processors] = num_processors
+        params[:num_logical_cpus] = num_logical_cpus
+        p [num_cores, num_processors, num_logical_cpus]
+
+        if num_cores * num_processors == num_logical_cpus
+          hyperthreading = false
+        else
+          hyperthreading = true
+        end
+
         params[:assign] = (0..(params[:multi] - 1)).map do |thread_id|
-          coreid = thread_id % params[:cores_per_cpu] + params[:cpunode] * params[:cores_per_cpu]
+          puts "HT: #{hyperthreading}"
+          if hyperthreading
+            coreid = (thread_id * 2) % (num_cores * 2)
+          else
+            coreid = thread_id % num_cores
+          end
+
+          coreid += params[:cpunode] * num_cores # offset
           "#{thread_id}:#{coreid}:#{params[:memnode]}"
         end.join(",")
 
