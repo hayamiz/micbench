@@ -10,7 +10,7 @@ def mem_bandwidth_analyze(plan)
   results = get_results
 
   results = results.map do |ret|
-    ret[:label] = "#{ret[:params][:pattern]}-#{h(ret[:params][:memsize])}-multi#{ret[:params][:multi]}-cpunode#{ret[:params][:cpunode]}-memnode#{ret[:params][:memnode]}"
+    ret[:label] = "#{ret[:params][:pattern]}-#{h(ret[:params][:memsize])}-multi#{ret[:params][:multi]}-cpunode#{ret[:params][:cpunode]}-memnode#{ret[:params][:memnode]}-hugepage:#{ret[:params][:use_hugepages]}"
     ret
   end
 
@@ -101,7 +101,7 @@ def plot_size_rt(results)
   serieses = Hash.new{Array.new}
 
   results.each do |ret|
-    serieses[[ret[:pattern], ret[:params][:cpunode], ret[:params][:memnode]]] += [ret]
+    serieses[[ret[:pattern], ret[:params][:cpunode], ret[:params][:memnode], "hugepage:#{ret[:params][:use_hugepages]}"]] += [ret]
   end
 
   datafile = File.open(common_file_name("bandwidth.tsv"), "w")

@@ -16,6 +16,9 @@ def_parameters do
 
   parameter :memsize => 2**30
 
+  variable :use_hugepages => [false]
+  parameter :hugetlbfile => "/mnt/hugetlbfile/mmap"
+
   # parameter :pattern => :sequential
   # parameter :pattern => :random
   parameter :pattern => :sequential
@@ -23,7 +26,6 @@ def_parameters do
   variable :multi => [1, 2, 3, 4, 5, 6, 7, 8]
 
   parameter :cpunode => 0
-  # variable :memnode => [0, 1, 2, 3]
   variable :memnode => `numactl --show|grep membind|sed -e 's/^membind: //g'`.strip.split.map(&:to_i)
 
   parameter :sys_monitor_interval => 1
@@ -114,7 +116,6 @@ def_routine do |plan, params|
         end
 
         params[:assign] = (0..(params[:multi] - 1)).map do |thread_id|
-          puts "HT: #{hyperthreading}"
           if hyperthreading
             coreid = (thread_id * 2) % (num_cores * 2)
           else
@@ -139,6 +140,10 @@ def_routine do |plan, params|
           if params[:assign]
             args += ["--assign", params[:assign]]
           end
+          if params[:use_hugepages]
+            args += ["--hugetlbfile", params[:hugetlbfile]]
+          end
+
           system_(args.join(" ") + " 1> #{result_file_name('micbench-mem.txt')} 2> #{result_file_name('micbench-mem-stderr.txt')}")
         else
           sleep params[:duration]
