@@ -9,7 +9,7 @@ micbench_io_SOURCES = micbench-io.c
 micbench_io_LDADD =				\
 	$(GLIB_LIBS)
 
-micbench_mem_SOURCES =  micbench-mem.c
+micbench_mem_SOURCES =  micbench-mem.c micbench-utils.c
 
 micbench_mem_LDADD =				\
 	-lnuma					\
