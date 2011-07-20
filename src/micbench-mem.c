@@ -3,6 +3,8 @@
 
 #include <sched.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include <sys/syscall.h>
 #include <sys/mman.h>
 #include <unistd.h>
@@ -20,15 +22,12 @@
 
 #include <glib.h>
 
+#include "micbench-utils.h"
+
 #define NPROCESSOR (sysconf(_SC_NPROCESSORS_ONLN))
 
 #define PAGE_SIZE (sysconf(_SC_PAGESIZE))
 
-// unit
-#define KILO 1000
-#define KIBI 1024
-#define MEBI (KIBI*KIBI)
-#define GIBI (KIBI*MEBI)
 
 typedef struct {
     pid_t thread_id;
@@ -54,7 +53,10 @@ struct {
 
     // memory access size
     gchar *sz_str;
-    gint64 size; // guaranteed to be multiple of 1024
+    glong size; // guaranteed to be multiple of 1024
+    const gchar *hugetlbfile;
+    glong hugepage_size;
+    gchar *hugepage_sz_str;
 
     // cpu usage adjustment
     gdouble cpuusage;
@@ -77,6 +79,7 @@ typedef struct {
 
     glong *working_area; // working area
     glong working_size; // size of working area
+    gint fd;
     perf_counter_t pc;
 
     pthread_barrier_t *barrier;
@@ -100,6 +103,10 @@ static GOptionEntry entries[] =
      "Specify CPU usage in percent (default: 100)"},
     {"size", 's', 0, G_OPTION_ARG_STRING, &option.sz_str,
      "Size of memory allocation for each thread (default: 1MB)"},
+    {"hugetlbfile", 'H', 0, G_OPTION_ARG_STRING, &option.hugetlbfile,
+     "Use HugePages if specified. Give a path to hugetlbfs mount point."},
+    {"hugepagesize", 'z', 0, G_OPTION_ARG_STRING, &option.hugepage_sz_str,
+     "Size of HugePage (default: 2MB)"},
     {"context-switch", 'c', 0, G_OPTION_ARG_INT, &option.num_cswch,
      "Force context switch for each specified iterations. 0 means no forcing. (default: 0)"},
     {"verbose", 'v', 0, G_OPTION_ARG_NONE, &option.verbose,
@@ -152,6 +159,9 @@ parse_args(gint *argc, gchar ***argv)
     option.assign_spec_str = NULL;
     option.sz_str = "1M";
     option.size = MEBI;
+    option.hugetlbfile = NULL;
+    option.hugepage_size = 2L * 1024L * 1024L;
+    option.hugepage_sz_str = NULL;
     option.cpuusage = 100;
 
     context = g_option_context_new("");
@@ -169,38 +179,31 @@ parse_args(gint *argc, gchar ***argv)
     }
     if (!option.rand){ option.seq = TRUE;}
 
-    // parse size str
-    gint len = strlen(option.sz_str);
-    gchar suffix = option.sz_str[len - 1];
-    glong size;
-
-    size = g_ascii_strtod(option.sz_str, NULL);
-    if (isalpha(suffix)) {
-        switch(suffix){
-        case 'k': case 'K':
-            size *= KIBI;
-            break;
-        case 'm': case 'M':
-            size *= MEBI;
-            break;
-        case 'g': case 'G':
-            size *= GIBI;
-            break;
-        }
+    option.size = micbench_parse_size(option.sz_str);
+    if (option.size == 0){
+        g_print("Invalid argument for --size: '%s'\n", option.sz_str);
+        goto error;
     }
-    if (size % KIBI != 0){
+    if (option.size % KIBI != 0){
         g_print("SIZE must be multiples of 1024.\n");
         goto error;
     }
-    if (option.seq == TRUE && size % (4 * KIBI) != 0){
+    if (option.seq == TRUE && option.size % (4 * KIBI) != 0){
         g_print("SIZE must be multiples of 4096 for sequential access mode.\n");
         goto error;
     }
-    if (size < 1) {
+    if (option.size < 1) {
         g_print("Invalid size specifier: %s\n", option.sz_str);
         goto error;
     }
-    option.size = (gint64) size;
+
+    if (option.hugepage_sz_str != NULL){
+        option.hugepage_size = micbench_parse_size(option.hugepage_sz_str);
+        if (option.hugepage_size == 0){
+            g_print("Invalid argument for --hugepagesize: '%s'\n", option.hugepage_sz_str);
+            goto error;
+        }
+    }
 
     return;
 error:
@@ -553,6 +556,7 @@ main(gint argc, gchar **argv)
 {
     th_arg_t          *args;
     glong             *working_area;
+    gint fd;
     gint               i;
     pthread_barrier_t *barrier;
 
@@ -590,20 +594,43 @@ main(gint argc, gchar **argv)
         }
     }
 
-    size_t mmap_size = option.size;
-    size_t align = PAGE_SIZE;
+    size_t mmap_size;
+    gint mmap_flags;
+    size_t align;
+
+    mmap_size = option.size;
+    mmap_flags = MAP_PRIVATE;
+    fd = -1;
+
+    if (option.hugetlbfile != NULL){
+        align = option.hugepage_size;
+    } else {
+        align = PAGE_SIZE;
+        mmap_flags |= MAP_ANONYMOUS;
+    }
     if (mmap_size % align != 0){
         mmap_size += (align - mmap_size % align);
     }
 
     if (option.local == TRUE){
         for(i = 0;i < option.multi;i++){
+            if (option.hugetlbfile != NULL) {
+                args[i].fd = open(option.hugetlbfile, O_CREAT | O_RDWR, 0755);
+                g_printerr("mmap_size: %ld\n", mmap_size);
+                if (args[i].fd == -1){
+                    perror("Failed to open hugetlbfs.\n");
+                    g_print("hugetlbfile: %s\n", option.hugetlbfile);
+                    exit(EXIT_FAILURE);
+                }
+            } else {
+                args[i].fd = -1;
+            }
             args[i].working_size = option.size;
             args[i].working_area = mmap(NULL,
                                         mmap_size,
                                         PROT_READ|PROT_WRITE,
-                                        MAP_ANONYMOUS|MAP_PRIVATE,
-                                        -1,
+                                        mmap_flags,
+                                        args[i].fd,
                                         0);
             if (args[i].working_area == MAP_FAILED){
                 perror("mmap(2) failed");
@@ -644,11 +671,22 @@ main(gint argc, gchar **argv)
 
         }
     } else {
+        if (option.hugetlbfile != NULL) {
+            fd = open(option.hugetlbfile, O_CREAT | O_RDWR, 0755);
+            if (fd == -1){
+                perror("Failed to open hugetlbfs.\n");
+                g_print("hugetlbfile: %s\n", option.hugetlbfile);
+                exit(EXIT_FAILURE);
+            }
+        } else {
+            fd = -1;
+        }
+
         working_area = mmap(NULL,
                             mmap_size,
                             PROT_READ|PROT_WRITE,
-                            MAP_PRIVATE|MAP_ANONYMOUS,
-                            -1,
+                            mmap_flags,
+                            fd,
                             0);
         if (working_area == MAP_FAILED){
             g_print("Cannot allocate memory\n");
@@ -709,10 +747,16 @@ main(gint argc, gchar **argv)
 
     for(i = 0;i < option.multi;i++){
         g_free(args[i].self);
+        if (args[i].fd != -1){
+            close(args[i].fd);
+        }
         if (option.assign_specs != NULL &&
             option.assign_specs[i] != NULL){
             g_free(option.assign_specs[i]);
         }
+    }
+    if (fd != -1){
+        close(fd);
     }
 
 
@@ -737,6 +781,7 @@ main(gint argc, gchar **argv)
             "context_switch\t%d\n"
             "page_size\t%ld\n"
             "size\t%ld\n"
+            "use_hugepages\t%s\n"
            ,
             (option.seq ? "sequential" : "random"),
             option.multi,
@@ -744,8 +789,15 @@ main(gint argc, gchar **argv)
             (option.assign_spec_str == NULL ? "null" : option.assign_spec_str),
             option.num_cswch,
             PAGE_SIZE,
-            option.size
+            option.size,
+            (option.hugetlbfile == NULL ? "false" : "true")
         );
+    if (option.hugetlbfile != NULL) {
+        g_print("hugetlbfile\t%s\n"
+                "hugepage_size\t%ld\n",
+                option.hugetlbfile,
+                option.hugepage_size);
+    }
     if (option.seq == TRUE) {
         g_print("stride_size\t%d\n",
                 MEM_INNER_LOOP_SEQ_STRIDE_SIZE);
