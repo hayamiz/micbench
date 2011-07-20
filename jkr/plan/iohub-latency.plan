@@ -27,7 +27,7 @@ def_parameters do
   parameter :direct_io => true
   parameter :timeout => 30
   parameter :offset_start => 0
-  parameter :offset_end => 0
+  parameter :offset_end => 1
   parameter :use_systemtap => false
 
   # interval of monitoring system state in second
@@ -60,7 +60,7 @@ def_routine do |plan, params|
   params[:device_or_file] = "/dev/#{params[:device]}"
 
   system_("echo noop > /sys/block/#{params[:device]}/queue/scheduler")
-  # system_("#{params[:command]} --direct -t 10 -b 64k -m 32 --rand -v #{params[:device_or_file]} # disturb cache")
+  system_("#{params[:command]} --direct -t 5 -b 64k -m 32 --rand -v #{params[:device_or_file]} # disturb cache")
 
   FileUtils.mkdir_p(result_file_name("blktrace"))
 
@@ -113,7 +113,7 @@ def_routine do |plan, params|
         args += ["--timeout", params[:timeout]]
         args += [params[:device_or_file]]
 
-        blktrace_pid = Process.spawn("blktrace -w #{params[:timeout]} -D #{result_file_name("blktrace")} -d #{params[:device_or_file]}")
+        blktrace_pid = Process.spawn("blktrace -a complete -a issue -w #{params[:timeout]} -D #{result_file_name("blktrace")} -d #{params[:device_or_file]}")
         system_(args.join(" ") + " > #{result_file_name('iostress.txt')}")
         params[:end_time] = Time.now
         Process.waitpid(blktrace_pid)
