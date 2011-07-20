@@ -171,7 +171,22 @@ def plot_size_rt(results)
                :other_options => <<EOS
 set key left bottom
 set logscale x
-set ytics (#{ytics})
+set xtics (#{xtics_str})
+EOS
+               )
+
+
+  plot_scatter(:output => common_file_name("bandwidth-large.eps"),
+               :gpfile => common_file_name("bandwidth-large.gp"),
+               :xlabel => "allocated memory size",
+               :ylabel => "bandwitdh [GB/sec]",
+               :xrange => "[#{32*2**20}:]",
+               :yrange => "[0:]",
+               :title => "Memory access bandwidth with 1 core",
+               :plot_data => plot_data_spec,
+               :other_options => <<EOS
+set key left bottom
+set logscale x
 set xtics (#{xtics_str})
 EOS
                )
@@ -189,7 +204,6 @@ EOS
 set key left bottom
 set logscale x
 set logscale y
-set ytics (#{ytics})
 set xtics (#{xtics_str})
 EOS
                )
