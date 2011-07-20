@@ -183,33 +183,70 @@ EOS
 end
 
 def plot_bar(config)
-  [:plot_data, :output, :title].each do |key|
+  [:output, :title, :series_labels, :item_labels, :data].each do |key|
     unless config[key]
-      $stderr.puts "key '#{key.to_s}' is required for bar graph"
-      return
+      raise StandardError.new("key '#{key.to_s}' is required for bar graph")
     end
   end
-  
-  xlabel = if config[:xlabel]
-             "set label #{config[:xrange]}"
-           else
-             ""
-           end
+
+  data = config[:data]
+
+  if ! data.all?{|series| series.all?{|datum| datum[:value].is_a? Numeric}}
+    raise StandardError.new("All datum must have :value key")
+  end
+
+  if config[:datafile]
+    datafile = File.open(config[:datafile], "w")
+  else
+    datafile = Tempfile.new("plot_bar")
+  end
+
+  plot_data = []
+  plot_stdev_data = []
+
+  if data.all?{|series| series.all?{|datum| datum[:stdev].is_a? Numeric}}
+    draw_stdev = true
+  else
+    draw_stdev = false
+  end
+
+  item_barwidth = 2.0 / 3.0
+  num_serieses = data.size
+  data_idx = 0
+  config[:data].each_with_index do |series, series_idx|
+    series.each_with_index do |datum, item_idx|
+      xpos = item_idx - item_barwidth / 2.0 + item_barwidth / num_serieses.to_f / 2.0 + item_barwidth / num_serieses.to_f * series_idx
+      barwidth = item_barwidth / num_serieses.to_f
+      datafile.puts([xpos, datum[:value], barwidth, (datum[:stdev] || "")].join("\t"))
+    end
+
+    plot_data.push({
+                     :title => config[:series_labels][series_idx],
+                     :using => "1:2:3",
+                     :index => "#{data_idx}:#{data_idx}",
+                   })
+
+    datafile.puts("\n\n")
+    data_idx += 1
+  end
+  datafile.fsync
+
   ylabel = if config[:ylabel]
-             "set ylabel #{config[:ylabel]}"
+             "set ylabel '#{config[:ylabel]}'"
            else
              ""
            end
+
   yrange = if config[:yrange]
              "set yrange #{config[:yrange]}"
            else
              ""
            end
 
-  plot_stmt = "plot " + config[:plot_data].map {|plot_datum|
-    [:datafile, :using, :title].each do |key|
+  plot_stmt = "plot " + plot_data.map do |plot_datum|
+    [:using, :title].each do |key|
       unless plot_datum[key]
-        $stderr.puts "key '#{key.to_s}' is required for a plot_datum of bar graph"
+        raise StandardError.new("key '#{key.to_s}' is required for a plot_datum of bar graph")
         return
       end
     end
@@ -217,30 +254,40 @@ def plot_bar(config)
     if plot_datum[:index]
       index = " index #{plot_datum[:index]} "
     end
-    "'#{plot_datum[:datafile]}' #{index} using #{plot_datum[:using]}"+
-    " title '#{gnuplot_label_escape(plot_datum[:title])}'" + plot_datum[:other_options].to_s
-  }.join(", ")
+    "'#{datafile.path}' #{index} using #{plot_datum[:using]}"+
+    " title '#{gnuplot_label_escape(plot_datum[:title])}' with boxes "
+  end.join(", ")
+
+  xpos = -1
+  xtics = config[:item_labels].map do |label|
+    xpos += 1
+    "\"#{label}\" #{xpos}"
+  end.join(",")
+  xtics = "(#{xtics})"
+  xrange = "[-1:#{config[:item_labels].size}]"
 
   script = <<EOS
 set term postscript enhanced color
 set output "#{config[:output]}"
 set size 0.9,0.6
 set title "#{config[:title]}"
-#{xlabel}
 #{ylabel}
 #{yrange}
-set style data histogram
-set style histogram cluster gap 1
-set style fill solid border -1
-set boxwidth 0.9
+set xrange #{xrange}
 set xtic rotate by -30 scale 0
+set xtics #{xtics}
 #{config[:other_options]}
 #{plot_stmt}
 EOS
-  gp = Tempfile.new("gnuplot")
+  if config[:gpfile]
+    gp = File.open(config[:gpfile], "w")
+  else
+    gp = Tempfile.new("gnuplot")
+  end
   gp.puts script
   gp.fsync
   system_("gnuplot #{gp.path}")
+  gp.close
 end
 
 def plot_scatter(config)
