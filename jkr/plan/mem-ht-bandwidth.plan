@@ -175,7 +175,7 @@ def_cleanup do |plan|
 end
 
 def_analysis do |plan|
-  use_script :mem_1core_bandwidth_analysis
+  use_script :mem_ht_bandwidth_analysis
 
   mem_bandwidth_analyze(plan)
 end
