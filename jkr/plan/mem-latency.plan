@@ -22,7 +22,7 @@ def_parameters do
   #                       2**19, 2**22, 2**23,
   #                       2**24, 2**30, 2**31, 2**32, 2**33]
 
-  sizes = (1..22).map{|x| 2**(10+x)}
+  sizes = (1..23).map{|x| 2**(10+x)}
   sizes += [(32 + 2)*1024]
   sizes += [(32 + 4)*1024]
   sizes += [(32 + 8)*1024]
@@ -45,7 +45,8 @@ def_parameters do
   # thread affinity
   # parameter :assign => "0:0:0"
   # variable :assign => ["0:0:0", "0:0:1"]
-  variable :assign => (0..7).map{|mnode| "0:0:#{mnode}"}
+  memnodes = `numactl --show|grep membind|sed -e 's/^membind: //g'`.strip.split.map(&:to_i)
+  variable :assign => memnodes.map{|mnode| "0:0:#{mnode}"}
 
   parameter :sys_monitor_interval => 1
   parameter :duration => 5
@@ -67,7 +68,7 @@ end
 
 def_prep do |plan|
   ENV['LANG'] = "C"
-  
+
   # warming up
   puts "Warming up system"
   system_(plan.params[:command], "--rand", "--size", "100M", "--multi", SysUtils.num_cores.to_s,
@@ -162,7 +163,7 @@ def_routine do |plan, params|
     send_mail("[error report] #{plan.title}",
               ["hayamiz.mobi@gmail.com"],
               errmsg + "\n\n" + params.inspect)
-    exit(1)
+    raise err
   end
 end
 
