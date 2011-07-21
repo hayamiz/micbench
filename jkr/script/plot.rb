@@ -210,7 +210,7 @@ def plot_bar(config)
     draw_stdev = false
   end
 
-  item_barwidth = 2.0 / 3.0
+  item_barwidth = 0.9 # 2.0 / 3.0
   num_serieses = data.size
   data_idx = 0
   config[:data].each_with_index do |series, series_idx|
@@ -255,7 +255,7 @@ def plot_bar(config)
       index = " index #{plot_datum[:index]} "
     end
     "'#{datafile.path}' #{index} using #{plot_datum[:using]}"+
-    " title '#{gnuplot_label_escape(plot_datum[:title])}' with boxes "
+    " title '#{gnuplot_label_escape(plot_datum[:title])}' with boxes fs solid 0.7 "
   end.join(", ")
 
   xpos = -1
@@ -264,7 +264,7 @@ def plot_bar(config)
     "\"#{label}\" #{xpos}"
   end.join(",")
   xtics = "(#{xtics})"
-  xrange = "[-1:#{config[:item_labels].size}]"
+  xrange = "[-0.5:#{config[:item_labels].size - 0.5}]"
 
   script = <<EOS
 set term postscript enhanced color

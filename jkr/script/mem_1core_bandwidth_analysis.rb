@@ -107,7 +107,7 @@ def plot_size_rt(results)
   datafile = File.open(common_file_name("bandwidth.tsv"), "w")
   plot_data_spec = []
   idx = 0
-  serieses.each do |series, rets|
+  serieses.to_a.sort_by{|series, rets| series.join("-")}.each do |series, rets|
     datafile.puts("# #{series}")
     datafile.puts("# size[kb]\ops_per_sec\tbandwidth[byte]\tbandwidth_err")
     rets.sort{|x,y|

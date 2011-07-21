@@ -23,9 +23,13 @@ def_parameters do
   parameter :multiplicity => 1
   parameter :thread_affinity => "0:0:0"
 
-  variable :device => ["fioa", "fiob", "fioc", "fiod", "fioe", "fiof", "fiog", "fioh"]
+  devices = `ls /dev/sd[a-z]{,[a-z]}`.gsub(/^\/dev\//, "").strip.split
+  devices = devices.select{|dev| dev =~ /^(sd[a-z]|sda[a-z])$/}
+  p devices
+
+  variable :device => devices
   parameter :direct_io => true
-  parameter :timeout => 30
+  parameter :timeout => 10
   parameter :offset_start => 0
   parameter :offset_end => 1
   parameter :use_systemtap => false
@@ -38,6 +42,16 @@ def_parameters do
 end
 
 def_prep do |plan|
+  $debugfs_path = '/sys/kernel/debug'
+  if File.exists?($debugfs_path)
+    $debugfs_mounted = true
+    puts "debugfs ready"
+  else
+    $debugfs_mounted = false
+    puts "debugfs not ready"
+    system_("mount -t debugfs debugfs #{$debugfs_path}")
+  end
+
   ENV['LD_LIBRARY_PATH'] = [ENV['LD_LIBRARY_PATH'],
                             File.join('/home', 'haya',
                                       plan.params[:short_hostname],
@@ -152,6 +166,9 @@ def send_mail(subject, addrs, body, files = [])
 end
 
 def_cleanup do |plan|
+  if $debugfs_mounted == false
+    system_("umount #{$debugfs_path}")
+  end
   send_mail("[report] #{plan.title}",
             ["hayamiz.mobi@gmail.com"],
             "finished")
