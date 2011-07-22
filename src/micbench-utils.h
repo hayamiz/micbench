@@ -1,9 +1,10 @@
 #ifndef MICBENCH_UTILS_H
 #define MICBENCH_UTILS_H
 
-#include <glib.h>
 #include <string.h>
 #include <ctype.h>
+
+#include <sys/time.h>
 
 // unit
 #define KILO 1000L
@@ -11,6 +12,18 @@
 #define MEBI (KIBI*KIBI)
 #define GIBI (KIBI*MEBI)
 
+// macros for struct timeval
+#define TV2LONG(tv)	(((long) tv.tv_sec) * 1000000L + (tv).tv_usec)
+#define TV2DOUBLE(tv)	(double) tv.tv_sec + ((double) tv.tv_usec) / 1000000.0L
+#define GETTIMEOFDAY(tv_ptr)                                    \
+    {                                                           \
+        if (0 != gettimeofday(tv_ptr, NULL)) {                  \
+            perror("gettimeofday(3) failed ");                  \
+            fprintf(stderr, " @%s:%d\n", __FILE__, __LINE__);   \
+        }                                                       \
+    }
+
+double mb_elapsed_time_from(struct timeval *tv);
 
 
 /*
@@ -24,11 +37,5 @@
   3-5 => 0x0...011100
   3-5+7 => 0x0...01011100
  */
-
-gint64
-micbench_parse_range_to_bitmap(const gchar *input, gchar endchar);
-
-glong
-micbench_parse_size(const gchar *sz_str);
 
 #endif

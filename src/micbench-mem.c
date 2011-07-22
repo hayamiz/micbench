@@ -12,15 +12,16 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <ctype.h>
 #include <string.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <math.h>
+#include <inttypes.h>
+
 #include <numa.h>
 #include <numaif.h>
-
-#include <glib.h>
 
 #include "micbench-utils.h"
 
@@ -32,54 +33,54 @@
 typedef struct {
     pid_t thread_id;
     cpu_set_t mask;
-    gulong nodemask;
+    unsigned long nodemask;
 } thread_assign_spec_t;
 
 struct {
     // multiplicity of memory access
-    gint multi;
+    int multi;
 
     // memory access mode
-    gboolean seq;
-    gboolean rand;
-    gboolean local;
+    bool seq;
+    bool rand;
+    bool local;
 
     // timeout
-    gint timeout;
+    int timeout;
 
     // specifier string of assignments of threads to each (logical) processor
-    const gchar *assign_spec_str;
+    const char *assign_spec_str;
     thread_assign_spec_t **assign_specs;
 
     // memory access size
-    gchar *sz_str;
-    glong size; // guaranteed to be multiple of 1024
-    const gchar *hugetlbfile;
-    glong hugepage_size;
-    gchar *hugepage_sz_str;
+    char *sz_str;
+    long size; // guaranteed to be multiple of 1024
+    const char *hugetlbfile;
+    long hugepage_size;
+    char *hugepage_sz_str;
 
     // cpu usage adjustment
-    gdouble cpuusage;
+    double cpuusage;
 
-    gint num_cswch;
+    int num_cswch;
 
-    gboolean verbose;
+    bool verbose;
 } option;
 
 typedef struct perf_counter_rec {
-    guint64 ops;
-    guint64 clk;
-    gdouble wallclocktime;
+    uintptr_t ops;
+    uintptr_t clk;
+    double wallclocktime;
 } perf_counter_t;
 
 typedef struct {
-    gint id;
+    int id;
     pthread_t *self;
     thread_assign_spec_t *assign_spec;
 
-    glong *working_area; // working area
-    glong working_size; // size of working area
-    gint fd;
+    long *working_area; // working area
+    long working_size; // size of working area
+    int fd;
     perf_counter_t pc;
 
     pthread_barrier_t *barrier;
@@ -115,27 +116,26 @@ static GOptionEntry entries[] =
 };
 
 // prototype declarations
-guint64 read_tsc(void);
-void do_memory_stress_seq(perf_counter_t* pc, glong *working_area, glong working_size, pthread_barrier_t *barrier);
-void do_memory_stress_rand(perf_counter_t* pc, glong *working_area, glong working_size, pthread_barrier_t *barrier);
+uintptr_t read_tsc(void);
+void do_memory_stress_seq(perf_counter_t* pc, long *working_area, long working_size, pthread_barrier_t *barrier);
+void do_memory_stress_rand(perf_counter_t* pc, long *working_area, long working_size, pthread_barrier_t *barrier);
 
 // generate random number which is more than or equal to 'from' and less than 'to' - 1
-gulong
-rand_range(GRand *rand, gulong from, gulong to)
+// TODO: 48bit
+unsigned long
+rand_range(unsigned long from, unsigned long to)
 {
-    register gulong x;
-    x = g_rand_int(rand);
-    x = x << (sizeof(guint32) * 8);
-    x = x | g_rand_int(rand);
+    register unsigned long x;
+    x = lrand48();
     x = x % (to - from) + from;
 
     return x;
 }
 
 void
-swap_glong(glong *ptr1, glong *ptr2)
+swap_long(long *ptr1, long *ptr2)
 {
-    glong tmp;
+    long tmp;
     if (ptr1 != ptr2) {
         tmp = *ptr1;
         *ptr1 = *ptr2;
@@ -144,7 +144,7 @@ swap_glong(glong *ptr1, glong *ptr2)
 }
 
 void
-parse_args(gint *argc, gchar ***argv)
+parse_args(int *argc, char ***argv)
 {
     GError *error = NULL;
     GOptionContext *context;
@@ -152,10 +152,10 @@ parse_args(gint *argc, gchar ***argv)
     // default values
     option.multi = 1;
     option.timeout = 60;
-    option.verbose = FALSE;
-    option.rand = FALSE;
-    option.seq = FALSE;
-    option.local = FALSE;
+    option.verbose = false;
+    option.rand = false;
+    option.seq = false;
+    option.local = false;
     option.assign_spec_str = NULL;
     option.sz_str = "1M";
     option.size = MEBI;
@@ -177,7 +177,7 @@ parse_args(gint *argc, gchar ***argv)
         g_print("--seq and --rand cannot be specified at a time\n");
         exit(EXIT_FAILURE);
     }
-    if (!option.rand){ option.seq = TRUE;}
+    if (!option.rand){ option.seq = true;}
 
     option.size = micbench_parse_size(option.sz_str);
     if (option.size == 0){
@@ -188,7 +188,7 @@ parse_args(gint *argc, gchar ***argv)
         g_print("SIZE must be multiples of 1024.\n");
         goto error;
     }
-    if (option.seq == TRUE && option.size % (4 * KIBI) != 0){
+    if (option.seq == true && option.size % (4 * KIBI) != 0){
         g_print("SIZE must be multiples of 4096 for sequential access mode.\n");
         goto error;
     }
@@ -207,7 +207,7 @@ parse_args(gint *argc, gchar ***argv)
 
     return;
 error:
-    g_print(g_option_context_get_help(context, FALSE, NULL));
+    g_print(g_option_context_get_help(context, false, NULL));
     g_option_context_free(context);
     exit(EXIT_FAILURE);
 }
@@ -223,15 +223,15 @@ error:
  * <mem_mode> := [1-9][0-9]* | 0
  *
  */
-gint
-parse_assign_specs(gint num_threads, thread_assign_spec_t **specs, const gchar *spec_str)
+int
+parse_assign_specs(int num_threads, thread_assign_spec_t **specs, const char *spec_str)
 {
-    gint thread_id;
-    gint core_id;
-    gint mem_node_id;
+    int thread_id;
+    int core_id;
+    int mem_node_id;
 
-    const gchar *str;
-    gchar *endptr;
+    const char *str;
+    char *endptr;
 
     str = spec_str;
 
@@ -259,7 +259,7 @@ parse_assign_specs(gint num_threads, thread_assign_spec_t **specs, const gchar *
             return -4;
         } else {
             if (specs[thread_id] == NULL){
-                specs[thread_id] = g_malloc(sizeof(thread_assign_spec_t));
+                specs[thread_id] = malloc(sizeof(thread_assign_spec_t));
             }
             specs[thread_id]->thread_id = thread_id;
 
@@ -279,11 +279,11 @@ parse_assign_specs(gint num_threads, thread_assign_spec_t **specs, const gchar *
 
             specs[thread_id]->nodemask = 1 << mem_node_id;
 
-            if(option.verbose == TRUE)
+            if(option.verbose == true)
                 g_printerr("assign spec: thread_id=%d, core_id=%d, mem_node_id=%d\n",
                            thread_id, core_id, mem_node_id);
         } else {
-            if(option.verbose == TRUE)
+            if(option.verbose == true)
                 g_printerr("assign spec: thread_id=%d, core_id=%d\n",
                            thread_id, core_id);
         }
@@ -305,7 +305,7 @@ thread_handler(void *arg)
     }
 
     if (option.cpuusage > 0) {
-        if (option.rand == TRUE){
+        if (option.rand == true){
             do_memory_stress_rand(&th_arg->pc, th_arg->working_area, th_arg->working_size, th_arg->barrier);
         } else {
             do_memory_stress_seq(&th_arg->pc, th_arg->working_area, th_arg->working_size, th_arg->barrier);
@@ -317,23 +317,23 @@ thread_handler(void *arg)
     pthread_exit(NULL);
 }
 
-guint64 inline
+uintptr_t inline
 read_tsc(void)
 {
-    guint64 ret;
-    guint32 eax, edx;
+    uintptr_t ret;
+    uint32_t eax, edx;
     __asm__ volatile("cpuid; rdtsc;"
                      : "=a" (eax) , "=d" (edx)
                      :
                      : "%ebx", "%ecx");
-    ret = ((guint64)edx) << 32 | eax;
+    ret = ((uint64_t)edx) << 32 | eax;
     return ret;
 }
 
-// guint64
+// uintptr_t
 // read_tsc(void)
 // {
-//     guint64 ret;
+//     uintptr_t ret;
 //     struct timespec tp;
 //     clock_gettime(CLOCK_MONOTONIC, &tp);
 //     ret = tp.tv_sec * 1000000000 + tp.tv_nsec;
@@ -343,41 +343,41 @@ read_tsc(void)
 
 void
 do_memory_stress_seq(perf_counter_t* pc,
-                     glong *working_area,
-                     glong working_size,
+                     long *working_area,
+                     long working_size,
                      pthread_barrier_t *barrier)
 {
-    gulong iter_count;
-    gulong i;
-    GTimer *timer = g_timer_new();
-    register glong *ptr;
-    register glong *ptr_end;
+    unsigned long iter_count;
+    unsigned long i;
+    struct timeval start_tv;
+    register long *ptr;
+    register long *ptr_end;
 
-    register guint64 t0, t1;
-    register gint cswch_counter = 0;
+    register uintptr_t t0, t1;
+    register int cswch_counter = 0;
 
     if (option.cpuusage < 100) {
-        iter_count = sizeof(glong) * 16 * MEBI / working_size;
+        iter_count = sizeof(long) * 16 * MEBI / working_size;
     } else {
-        iter_count = sizeof(glong) * GIBI / working_size;
+        iter_count = sizeof(long) * GIBI / working_size;
     }
     if (iter_count == 0) {
         iter_count = 1;
     }
 
-    gdouble t = 0;
-    gdouble uf = (100 - option.cpuusage) / option.cpuusage; // cpu usage factor
-    gint j = 0;
+    double t = 0;
+    double uf = (100 - option.cpuusage) / option.cpuusage; // cpu usage factor
+    int j = 0;
     struct timespec sleeptime;
 
     pthread_barrier_wait(barrier);
-    g_timer_start(timer);
-    while((t = g_timer_elapsed(timer, NULL)) < option.timeout){
+    GETTIMEOFDAY(&start_tv);
+    while((t = mv_elapsed_time_from(&start_tv)) < option.timeout){
         // g_print("loop\n");
         t0 = read_tsc();
         for(i = 0;i < iter_count;i++){
             ptr = working_area;
-            ptr_end = working_area + (working_size / sizeof(glong));
+            ptr_end = working_area + (working_size / sizeof(long));
             for(;ptr < ptr_end;){
                 // scan & increment 1KB segment
 #include "micbench-mem-inner.c"
@@ -391,8 +391,8 @@ do_memory_stress_seq(perf_counter_t* pc,
         pc->clk += t1 - t0;
         pc->ops += MEM_INNER_LOOP_SEQ_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQ_REGION_SIZE) * iter_count;
         if (option.cpuusage < 100){
-            gdouble timeslice = g_timer_elapsed(timer, NULL) - t - 0.002 * (option.cpuusage / 40)*(option.cpuusage / 40);
-            gdouble sleepsec = timeslice * uf;
+            double timeslice = mb_elapsed_time_from(&start_tv) - t - 0.002 * (option.cpuusage / 40) * (option.cpuusage / 40);
+            double sleepsec = timeslice * uf;
             sleeptime.tv_sec = floor(sleepsec);
             sleeptime.tv_nsec = (sleepsec - sleeptime.tv_sec) * 1000000000;
             nanosleep(&sleeptime, NULL);
@@ -402,69 +402,66 @@ do_memory_stress_seq(perf_counter_t* pc,
             }
         }
     }
-    if(option.verbose == TRUE) g_print("loop end: t=%lf\n", t);
+    if(option.verbose == true) g_print("loop end: t=%lf\n", t);
     pc->wallclocktime = t;
-
-    g_timer_destroy(timer);
 }
 
 void
 do_memory_stress_rand(perf_counter_t* pc,
-                      glong *working_area,
-                      glong working_size,
+                      long *working_area,
+                      long working_size,
                       pthread_barrier_t *barrier)
 {
-    gulong iter_count;
-    register gulong i;
-    GTimer *timer = g_timer_new();
-    register glong *ptr;
-    glong *ptr_start;
-    glong *ptr_end;
-    GRand *rand;
+    unsigned long iter_count;
+    register unsigned long i;
+    struct timeval start_tv;
+    register long *ptr;
+    long *ptr_start;
+    long *ptr_end;
 
-    register guint64 t0, t1;
-    register gint cswch_counter = 0;
+    register uintptr_t t0, t1;
+    register int cswch_counter = 0;
 
     iter_count = KIBI;
 
     // initialize pointer loop
-    rand = g_rand_new_with_seed(syscall(SYS_gettid) + time(NULL));
+    srand48(syscall(SYS_gettid) + time(NULL));
     ptr_start = working_area;
-    ptr_end = working_area + (working_size / sizeof(glong));
+    ptr_end = working_area + (working_size / sizeof(long));
 
-    for(ptr = ptr_start;ptr < ptr_end;ptr += 64 / sizeof(glong)){ // assume cache line is 64B
-        *ptr = (glong)(ptr + 64 / sizeof(glong));
+    for(ptr = ptr_start;ptr < ptr_end;ptr += 64 / sizeof(long)){ // assume cache line is 64B
+        *ptr = (long)(ptr + 64 / sizeof(long));
     }
-    *(ptr_end - (64 / sizeof(glong))) = (glong) ptr_start;
+    *(ptr_end - (64 / sizeof(long))) = (long) ptr_start;
 
     // shuffle pointer loop
-    gulong num_cacheline;
-    guint32 ofst;
+    unsigned long num_cacheline;
+    unsigned long ofst;
     num_cacheline = working_size / 64;
 
-    GTimer *tt = g_timer_new(); g_timer_start(tt);
+    GETTIMEOFDAY(&start_tv);
     for(i = 0; i < num_cacheline; i++){
-        glong *ptr1, *ptr1_succ, *ptr2, *ptr2_succ;
+        long *ptr1, *ptr1_succ, *ptr2, *ptr2_succ;
     retry:
         ofst = g_rand_int_range(rand, 0, num_cacheline - i);
-        ptr1 = ptr_start + (i * 64 / sizeof(glong));
-        ptr1_succ = (glong *) *ptr1;
-        ptr2 = ptr_start + ((i + ofst) * 64 / sizeof(glong));
-        ptr2_succ = (glong *) *ptr2;
+        ptr1 = ptr_start + (i * 64 / sizeof(long));
+        ptr1_succ = (long *) *ptr1;
+        ptr2 = ptr_start + ((i + ofst) * 64 / sizeof(long));
+        ptr2_succ = (long *) *ptr2;
 
         if (ptr1_succ == ptr2){
-            *ptr1 = (glong) ptr2_succ;
+            *ptr1 = (long) ptr2_succ;
             *ptr1_succ = *ptr2_succ;
-            *ptr2_succ = (glong) ptr1_succ;
+            *ptr2_succ = (long) ptr1_succ;
         } else {
-            *ptr1 = (glong) ptr2_succ;
-            *ptr2 = (glong) ptr1_succ;
-            swap_glong(ptr1_succ, ptr2_succ);
+            *ptr1 = (long) ptr2_succ;
+            *ptr2 = (long) ptr1_succ;
+            swap_long(ptr1_succ, ptr2_succ);
         }
 
-        if (ptr1 == (glong*) *ptr1 ||
-            ptr2 == (glong*) *ptr2 ||
-            ptr2_succ == (glong*)*ptr2_succ){
+        if (ptr1 == (long*) *ptr1 ||
+            ptr2 == (long*) *ptr2 ||
+            ptr2_succ == (long*)*ptr2_succ){
             goto retry;
             printf("i=%ld\n"
                    "ptr1:\t%ld\t->\t%ld\n"
@@ -472,53 +469,48 @@ do_memory_stress_rand(perf_counter_t* pc,
                    "ptr2s:\t%ld\t->\t%ld\n",
                    i,
                    (ptr1 - ptr_start) / 8,
-                   ((glong*)*ptr1 - ptr_start) / 8,
+                   ((long*)*ptr1 - ptr_start) / 8,
                    (ptr2 - ptr_start) / 8,
-                   ((glong*)*ptr2 - ptr_start) / 8,
+                   ((long*)*ptr2 - ptr_start) / 8,
                    (ptr2_succ - ptr_start) / 8,
-                   ((glong*)*ptr2_succ - ptr_start) / 8);
+                   ((long*)*ptr2_succ - ptr_start) / 8);
             exit(1);
         }
     }
-    if(option.verbose == TRUE)
-        g_printerr("shuffle time: %f\n", g_timer_elapsed(tt, NULL));
-    g_timer_start(tt);
+    if(option.verbose == true) {
+        g_printerr("shuffle time: %lf\n", mb_elapsed_time_from(&start_tv));
+    }
 
+    GETTIMEOFDAY(&start_tv);
     // check loop
-    gulong counter;
-    for(counter = 1, ptr = (glong *) *ptr_start;
+    unsigned long counter;
+    for(counter = 1, ptr = (long *) *ptr_start;
         ptr != ptr_start;
-        ptr = (glong *) *ptr){
+        ptr = (long *) *ptr){
         // printf("%ld\t->\t%ld\n",
-        //        ((glong) ptr - (glong) ptr_start) / 64,
-        //        (*ptr - (glong) ptr_start) / 64);
+        //        ((long) ptr - (long) ptr_start) / 64,
+        //        (*ptr - (long) ptr_start) / 64);
         counter++;
     }
     if (counter != num_cacheline){
         g_printerr("initialization failed. counter=%ld\n", counter);
         exit(EXIT_FAILURE);
     }
-    
-    if (0) { // skip validation
-        if (option.verbose == TRUE)
-            g_printerr("shuffle-validation time: %f\n", g_timer_elapsed(tt, NULL));
-        g_timer_destroy(tt);
-    }
 
     // go through pointer loop for evicting cache lines
-    ptr = (glong *) *ptr_start;
+    ptr = (long *) *ptr_start;
     while(ptr != ptr_start){
-        ptr = (glong *) *ptr;
+        ptr = (long *) *ptr;
     }
 
-    gdouble t = 0;
-    gdouble uf = (100 - option.cpuusage) / option.cpuusage; // cpu usage factor
-    gint j = 0;
+    double t = 0;
+    double uf = (100 - option.cpuusage) / option.cpuusage; // cpu usage factor
+    int j = 0;
     struct timespec sleeptime;
 
     pthread_barrier_wait(barrier);
-    g_timer_start(timer);
-    while((t = g_timer_elapsed(timer, NULL)) < option.timeout){
+    GETTIMEOFDAY(&start_tv);
+    while((t = mb_elapsed_time_from(&start_tv)) < option.timeout){
         t0 = read_tsc();
         ptr = working_area;
         for(i = 0;i < iter_count;i++){
@@ -534,8 +526,8 @@ do_memory_stress_rand(perf_counter_t* pc,
         pc->ops += iter_count * MEM_INNER_LOOP_RANDOM_NUM_OPS;
         // g_print("loop clk=%ld, ops=%ld\n", pc->clk, pc->ops);
         if (option.cpuusage < 100){
-            gdouble timeslice = g_timer_elapsed(timer, NULL) - t - 0.002 * (option.cpuusage / 40)*(option.cpuusage / 40);
-            gdouble sleepsec = timeslice * uf;
+            double timeslice = mb_elapsed_time_from(&start_tv) - t - 0.002 * (option.cpuusage / 40)*(option.cpuusage / 40);
+            double sleepsec = timeslice * uf;
             sleeptime.tv_sec = floor(sleepsec);
             sleeptime.tv_nsec = (sleepsec - sleeptime.tv_sec) * 1000000000;
             nanosleep(&sleeptime, NULL);
@@ -547,28 +539,26 @@ do_memory_stress_rand(perf_counter_t* pc,
     }
     g_print("loop end: t=%lf\n", t);
     pc->wallclocktime = t;
-
-    g_timer_destroy(timer);
 }
 
-gint
-main(gint argc, gchar **argv)
+int
+main(int argc, char **argv)
 {
     th_arg_t          *args;
-    glong             *working_area;
-    gint fd;
-    gint               i;
+    long              *working_area;
+    int                fd;
+    int                i;
     pthread_barrier_t *barrier;
 
     parse_args(&argc, &argv);
 
-    args = g_malloc(sizeof(th_arg_t) * option.multi);
-    barrier = g_malloc(sizeof(pthread_barrier_t));
+    args = malloc(sizeof(th_arg_t) * option.multi);
+    barrier = malloc(sizeof(pthread_barrier_t));
     pthread_barrier_init(barrier, NULL, option.multi);
 
     for(i = 0;i < option.multi;i++){
         args[i].id = i;
-        args[i].self = g_malloc(sizeof(pthread_t));
+        args[i].self = malloc(sizeof(pthread_t));
         args[i].assign_spec = NULL;
         args[i].pc.ops = 0;
         args[i].pc.clk = 0;
@@ -576,11 +566,11 @@ main(gint argc, gchar **argv)
     }
 
     if (option.assign_spec_str != NULL) {
-        option.assign_specs = g_malloc(sizeof(thread_assign_spec_t *) * option.multi);
+        option.assign_specs = malloc(sizeof(thread_assign_spec_t *) * option.multi);
         for (i = 0;i < option.multi;i++){
             option.assign_specs[i] = NULL;
         }
-        gint s;
+        int s;
         if ((s = parse_assign_specs(option.multi, option.assign_specs, option.assign_spec_str)) != 0){
             g_print("Invalid assignment specifier(%d): %s\n",
                     s,
@@ -595,7 +585,7 @@ main(gint argc, gchar **argv)
     }
 
     size_t mmap_size;
-    gint mmap_flags;
+    int mmap_flags;
     size_t align;
 
     mmap_size = option.size;
@@ -612,7 +602,7 @@ main(gint argc, gchar **argv)
         mmap_size += (align - mmap_size % align);
     }
 
-    if (option.local == TRUE){
+    if (option.local == true){
         for(i = 0;i < option.multi;i++){
             if (option.hugetlbfile != NULL) {
                 args[i].fd = open(option.hugetlbfile, O_CREAT | O_RDWR, 0755);
@@ -662,12 +652,12 @@ main(gint argc, gchar **argv)
                 }
             }
             // initialize memories and force allocation of physical memory
-            GTimer *tt = g_timer_new(); g_timer_start(tt);
+            struct timeval tv;
+            GETTIMEOFDAY(&tv);
             memset(args[i].working_area, 1, mmap_size);
             memset(args[i].working_area, 0, mmap_size);
-            if (option.verbose == TRUE)
-                g_printerr("memset time: %f\n", g_timer_elapsed(tt, NULL));
-            g_timer_destroy(tt);
+            if (option.verbose == true)
+                g_printerr("memset time: %f\n", mb_elapsed_time_from(&tv));
 
         }
     } else {
@@ -733,8 +723,10 @@ main(gint argc, gchar **argv)
         }
     }
 
-    GTimer *timer = g_timer_new();
-    g_timer_start(timer);
+    struct timeval start_tv;
+    struct timeval end_tv;
+
+    GETTIMEOFDAY(&start_tv);
     for(i = 0;i < option.multi;i++){
         pthread_create(args[i].self, NULL, thread_handler, &args[i]);
     }
@@ -742,7 +734,7 @@ main(gint argc, gchar **argv)
     for(i = 0;i < option.multi;i++){
         pthread_join(*args[i].self, NULL);
     }
-    g_timer_stop(timer);
+    GETTIMEOFDAY(&end_tv);
     pthread_barrier_destroy(barrier);
 
     for(i = 0;i < option.multi;i++){
@@ -760,9 +752,9 @@ main(gint argc, gchar **argv)
     }
 
 
-    gint64 ops = 0;
-    gint64 clk = 0;
-    gdouble wallclocktime = 0.0;
+    int64_t ops = 0;
+    int64_t clk = 0;
+    double wallclocktime = 0.0;
     for(i = 0;i < option.multi;i++){
         ops += args[i].pc.ops;
         clk += args[i].pc.clk;
@@ -770,8 +762,8 @@ main(gint argc, gchar **argv)
     }
 
     wallclocktime /= option.multi;
-    gdouble rt = ((gdouble)clk)/ops;
-    gdouble tp = ops / wallclocktime;
+    double rt = ((double)clk)/ops;
+    double tp = ops / wallclocktime;
 
     // print summary
     g_print("access_pattern\t%s\n"
@@ -798,7 +790,7 @@ main(gint argc, gchar **argv)
                 option.hugetlbfile,
                 option.hugepage_size);
     }
-    if (option.seq == TRUE) {
+    if (option.seq == true) {
         g_print("stride_size\t%d\n",
                 MEM_INNER_LOOP_SEQ_STRIDE_SIZE);
     }
@@ -814,15 +806,15 @@ main(gint argc, gchar **argv)
             wallclocktime,
             tp,
             rt,
-            g_timer_elapsed(timer, NULL)
+            TV2DOUBLE(end_tv) - TV2DOUBLE(start_tv)
         );
-    if (option.seq == TRUE) {
+    if (option.seq == true) {
         g_print("GB_per_sec\t%lf\n",
                 tp * MEM_INNER_LOOP_SEQ_STRIDE_SIZE / 1024 / 1024 / 1024);
     }
 
 
-    if (option.local == TRUE){
+    if (option.local == true){
         for(i = 0;i < option.multi;i++){
             munmap(args[i].working_area, mmap_size);
         }

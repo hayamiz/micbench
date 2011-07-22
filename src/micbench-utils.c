@@ -1,36 +1,14 @@
 
 #include "micbench-utils.h"
 
-
-/* return 0 on failure */
-glong
-micbench_parse_size(const gchar *sz_str)
+double
+mb_elapsed_time_from(struct timeval *tv)
 {
-    gint len;
-    gchar suffix;
-    gint64 size;
-
-    len = strlen(sz_str);
-    suffix = sz_str[len - 1];
-    size = g_ascii_strtoll(sz_str, NULL, 10);
-
-    if (size == 0) {
-        return 0;
+    double ret;
+    struct timeval now;
+    if (0 != gettimeofday(&now, NULL)){
+        perror("gettimeofday(3) failed ");
+        fprintf(stderr, " @%s:%d\n", __FILE__, __LINE__);
     }
-
-    if (isalpha(suffix)) {
-        switch(suffix){
-        case 'k': case 'K':
-            size *= KIBI;
-            break;
-        case 'm': case 'M':
-            size *= MEBI;
-            break;
-        case 'g': case 'G':
-            size *= GIBI;
-            break;
-        }
-    }
-
-    return size;
+    return TV2DOUBLE(now) - TV2DOUBLE(tv);
 }
