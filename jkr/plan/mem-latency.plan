@@ -36,6 +36,8 @@ def_parameters do
   sizes += [(32 + 8)*1024*1024, (32 - 8)*1024*1024]
 
   sizes.sort!
+
+  sizes = [16 * 2**20, 64 * 2**20, 256 * 2**20]
   variable :memsize => sizes
 
   # parameter :pattern => :sequential
@@ -46,10 +48,12 @@ def_parameters do
   # parameter :assign => "0:0:0"
   # variable :assign => ["0:0:0", "0:0:1"]
   memnodes = `numactl --show|grep membind|sed -e 's/^membind: //g'`.strip.split.map(&:to_i)
-  variable :assign => memnodes.map{|mnode| "0:0:#{mnode}"}
+  variable :assign => memnodes.map{|mnode| "0:#{16 * 6}:#{mnode}"}
+  # variable :assign => memnodes.map{|mnode| "0:0:#{mnode}"}
 
   parameter :sys_monitor_interval => 1
   parameter :duration => 5
+  # parameter :duration => 10
 
   # oprofile events
   parameter :op_sample_duration => 10
@@ -63,7 +67,7 @@ def_parameters do
 
   variable :multi => [1]
 
-  variable :trial => (1..5).to_a # dummy variable
+  # variable :trial => (1..5).to_a # dummy variable
 end
 
 def_prep do |plan|

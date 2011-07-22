@@ -95,11 +95,14 @@ def mem_bandwidth_analyze(plan)
   end
 
   plot_size_rt(aggregated_results)
-  plot_comparison(aggregated_results)
-  plot_comparison(aggregated_results.select{|ret| ret[:size] == 2**30}, "bandwidth-comparison-1GB")
+  plot_size_comparison(aggregated_results)
+
+  plan.vars[:memsize].each do |size|
+    plot_size_node_comparison(aggregated_results.select{|ret| ret[:size] == size}, "bandwidth-comparison-#{h(size)}")
+  end
 end
 
-def plot_comparison(results, basename = "bandwidth-comparison")
+def plot_size_comparison(results, basename = "bandwidth-comparison")
   serieses = Hash.new{Array.new}
 
   results.each do |ret|
@@ -117,8 +120,10 @@ def plot_comparison(results, basename = "bandwidth-comparison")
   item_labels = serieses.first[1].map{|ret| h(ret[:size])}
   series_labels = serieses.map{|label,_| label}
 
+  max_value = 0
   band_data = serieses.map do |label, series|
     series.map do |ret|
+      max_value = [ret[:bandwidth], max_value].max
       {
         :value => ret[:bandwidth], :stdev => ret[:bandwidth_err]
       }
@@ -131,8 +136,64 @@ def plot_comparison(results, basename = "bandwidth-comparison")
            :series_labels => series_labels,
            :item_labels => item_labels,
            :title => "Bandwidth interference by HT",
-           :yrange => "[0:20]",
+           :yrange => "[0:#{max_value * 1.2}]",
            :ylabel => "memory bandwidth [GB/sec]",
+           :size => "1.0,1.0",
+           :data => band_data)
+end
+
+def plot_size_node_comparison(results, basename = "bandwidth-comparison")
+  serieses = Hash.new{Array.new}
+
+  results.each do |ret|
+    assigns = ret[:params][:assign].gsub(/(\d+:\d+):\d+/, "\\1").split(",")
+    cpus = assigns.map{|a| a.gsub(/\d+:(\d)/, "\\1").to_i}
+    str = cpus.map{|x| "cpu#{x}"}.join("+")
+    if cpus.size == 2 && cpus[0] + 1 == cpus[1]
+      str += "(1 phys. core)"
+    elsif cpus.size == 2 && cpus[0] + 2 == cpus[1]
+      str += "(2 phys. core)"
+    end
+    serieses[[ret[:pattern], str]] += [ret]
+  end
+
+  # make human readable labels
+  serieses = serieses.to_a.map do |series,rets|
+    assigns = rets[0][:params][:assign].split(",")
+    num_threads = assigns.size
+    label = "#{num_threads}threads-#{series[1]}"
+    [label, rets.sort_by{|ret| ret[:params][:assign]}]
+  end.sort_by{|label,_| label}
+
+  item_labels = serieses.first[1].map do |ret|
+    memnodes = ret[:params][:assign].split(",").map{|assign| assign.gsub(/^\d+:\d+:/, '').to_i}
+    if ! memnodes.all?{|node| node == memnodes.first}
+      p [ret[:params][:assign], memnodes]
+      raise StandardError.new("Invalid memory node assignment: #{ret[:params][:assign]}")
+    end
+    h(ret[:size]) + " (mnode #{memnodes.first})"
+  end
+  series_labels = serieses.map{|label,_| label}
+
+  max_value = 0
+  band_data = serieses.map do |label, series|
+    series.map do |ret|
+      max_value = [ret[:bandwidth], max_value].max
+      {
+        :value => ret[:bandwidth], :stdev => ret[:bandwidth_err]
+      }
+    end
+  end
+
+  plot_bar(:output =>   common_file_name("#{basename}.eps"),
+           :gpfile =>   common_file_name("#{basename}.gp"),
+           :datafile => common_file_name("#{basename}.tsv"),
+           :series_labels => series_labels,
+           :item_labels => item_labels,
+           :title => "Bandwidth interference by HT",
+           :yrange => "[0:#{max_value * 1.2}]",
+           :ylabel => "memory bandwidth [GB/sec]",
+           :size => "1.0,1.0",
            :data => band_data)
 end
 

@@ -189,6 +189,8 @@ def plot_bar(config)
     end
   end
 
+  config[:size] ||= "0.9,0.6"
+
   data = config[:data]
 
   if ! data.all?{|series| series.all?{|datum| datum[:value].is_a? Numeric}}
@@ -269,7 +271,7 @@ def plot_bar(config)
   script = <<EOS
 set term postscript enhanced color
 set output "#{config[:output]}"
-set size 0.9,0.6
+set size #{config[:size]}
 set title "#{config[:title]}"
 #{ylabel}
 #{yrange}

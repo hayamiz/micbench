@@ -194,6 +194,9 @@ def plot_size_rt(results)
   datafile = File.open(common_file_name("response-time.tsv"), "w")
   plot_data_spec = []
   idx = 0
+
+  min_size = 2 ** 40
+  max_size = 0
   serieses.to_a.sort_by do |series, rets|
     series.join(" ")
   end.each do |series, rets|
@@ -203,6 +206,8 @@ def plot_size_rt(results)
       x[:size] <=> y[:size]
     }.each{|ret|
       if ret[:size] > 0
+        min_size = [ret[:size], min_size].min
+        max_size = [ret[:size], max_size].max
         datafile.printf("%d\t%f\t%f\n",
                         ret[:size],
                         ret[:response_time],
@@ -251,20 +256,22 @@ set xtics (#{xtics_str})
 EOS
                )
 
-  plot_scatter(:output => common_file_name("response-time-small.eps"),
-               :gpfile => common_file_name("response-time-small.gp"),
-               :xlabel => "allocated memory size [byte]",
-               :ylabel => "response time [clk/op]",
-               :xrange => "[:#{8 * 2**20}]",
-               :yrange => "[0:]",
-               :title => "Memory access response time",
-               :plot_data => plot_data_spec,
-               :other_options => <<EOS
+  if min_size < 8 * 2**20
+    plot_scatter(:output => common_file_name("response-time-small.eps"),
+                 :gpfile => common_file_name("response-time-small.gp"),
+                 :xlabel => "allocated memory size [byte]",
+                 :ylabel => "response time [clk/op]",
+                 :xrange => "[:#{8 * 2**20}]",
+                 :yrange => "[0:]",
+                 :title => "Memory access response time",
+                 :plot_data => plot_data_spec,
+                 :other_options => <<EOS
 set key left top
 set logscale x
 set xtics (#{xtics_str})
 EOS
-               )
+                 )
+  end
 
   plot_scatter(:output => common_file_name("response-time-logscale.eps"),
                :gpfile => common_file_name("response-time-logscale.gp"),

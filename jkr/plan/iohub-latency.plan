@@ -21,15 +21,13 @@ def_parameters do
   parameter :mode => :read # [:read, :write]
 
   parameter :multiplicity => 1
-  parameter :thread_affinity => "0:0:0"
 
-  devices = `ls /dev/sd[a-z]{,[a-z]}`.gsub(/^\/dev\//, "").strip.split
-  devices = devices.select{|dev| dev =~ /^(sd[a-z]|sda[a-z])$/}
-  p devices
+  nodes = `numactl --show|grep membind|sed -e 's/^membind: //g'`.strip.split.map(&:to_i)
+  variable :cpunode => nodes
 
-  variable :device => devices
+  parameter :device => "sdb"
   parameter :direct_io => true
-  parameter :timeout => 10
+  parameter :timeout => 30
   parameter :offset_start => 0
   parameter :offset_end => 1
   parameter :use_systemtap => false
@@ -95,6 +93,10 @@ def_routine do |plan, params|
       stap_pid = nil
     end
 
+    params[:num_cores] = `grep 'core id' /proc/cpuinfo|sort|uniq|wc -l`.to_i
+    params[:num_processors] = `grep 'physical id' /proc/cpuinfo|sort|uniq|wc -l`.to_i
+    params[:num_logical_cpus] = `grep 'processor' /proc/cpuinfo|sort|uniq|wc -l`.to_i
+    params[:num_logical_cores] = params[:num_logical_cpus] / params[:num_processors]
 
     with_process2("mpstat", "-P", "ALL",
                   params[:sys_monitor_interval],
@@ -111,9 +113,12 @@ def_routine do |plan, params|
         if params[:pattern] == :random
           args += ["--rand"]
         end
-        if params[:thread_affinity]
-          args += ["-A", params[:thread_affinity]]
-        end
+
+        raise StandardError.new(":cpunode required.") unless params[:cpunode]
+        cpuid = params[:cpunode] * params[:num_logical_cores]
+        params[:thread_affinity] = "0:#{cpuid}:#{params[:cpunode]}"
+        args += ["-A", params[:thread_affinity]]
+
         args += ["--blocksize", params[:blocksize]]
         if params[:direct_io]
           args += ["--direct"]

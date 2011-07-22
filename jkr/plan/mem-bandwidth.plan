@@ -108,6 +108,7 @@ def_routine do |plan, params|
         params[:num_processors] = num_processors
         params[:num_logical_cpus] = num_logical_cpus
         p [num_cores, num_processors, num_logical_cpus]
+        num_logical_cores = num_logical_cpus / num_processors
 
         if num_cores * num_processors == num_logical_cpus
           hyperthreading = false
@@ -116,12 +117,20 @@ def_routine do |plan, params|
         end
 
         params[:assign] = (0..(params[:multi] - 1)).map do |thread_id|
-          if hyperthreading
-            coreid = (thread_id * 2) % (num_cores * 2)
+          coreid = nil
+          if thread_id < num_cores
+            if hyperthreading
+              coreid = (thread_id * 2) % num_logical_cores
+            else
+              coreid = thread_id % num_cores
+            end
+          elsif hyperthreading && thread_id < num_cores * 2
+            coreid = ((thread_id - num_cores) * 2 + 1) % num_logical_cores
           else
-            coreid = thread_id % num_cores
+            coreid = thread_id % num_logical_cores
           end
 
+          raise StandardError.new("coreid not specified") unless coreid
           coreid += params[:cpunode] * num_cores # offset
           "#{thread_id}:#{coreid}:#{params[:memnode]}"
         end.join(",")
