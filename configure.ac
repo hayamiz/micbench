@@ -40,6 +40,11 @@ dnl ******************************
 AC_CHECK_HEADERS(numa.h, [have_numa_h=yes], [have_numa_h=no])
 AC_CHECK_LIB(numa, numa_available, [have_libnuma=yes], [have_libnuma=no])
 
+if test "$have_numa_h" = "yes"; then
+  AC_DEFINE([HAVE_NUMA_H], [1], [Define if numa.h exists.])
+fi
+AC_DEFINE([HAVE_NUMA_H], [1], [Define if numa.h exists.])
+
 if test "$have_libnuma" = "yes"; then
   LIBS="$LIBS -lnuma"
 fi

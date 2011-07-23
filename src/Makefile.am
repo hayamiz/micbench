@@ -1,6 +1,6 @@
 
-AM_CFLAGS = -g -O2 -Wall
-LDFLAGS = -Wall
+AM_CFLAGS = -g -Wall
+LDFLAGS =
 
 bin_PROGRAMS = micbench-io micbench-mem
 
