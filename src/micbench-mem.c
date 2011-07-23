@@ -1,34 +1,6 @@
-
 #define _GNU_SOURCE
 
-#include <sched.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <sys/syscall.h>
-#include <sys/mman.h>
-#include <unistd.h>
-#include <errno.h>
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <ctype.h>
-#include <string.h>
-#include <unistd.h>
-#include <pthread.h>
-#include <math.h>
-#include <inttypes.h>
-
-#include <numa.h>
-#include <numaif.h>
-
-#include "micbench-utils.h"
-
-#define NPROCESSOR (sysconf(_SC_NPROCESSORS_ONLN))
-
-#define PAGE_SIZE (sysconf(_SC_PAGESIZE))
-
+#include "micbench.h"
 
 typedef struct {
     pid_t thread_id;

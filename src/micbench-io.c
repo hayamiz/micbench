@@ -1,29 +1,7 @@
-
 #define _GNU_SOURCE
 #define _LARGEFILE64_SOURCE
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-#include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <inttypes.h>
-#include <ctype.h>
-
-#include <pthread.h>
-#include <malloc.h>
-#include <sched.h>
-
-#include <linux/fs.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
-#include <sys/syscall.h>
-
-#include "micbench-utils.h"
-
-#define NPROCESSOR (sysconf(_SC_NPROCESSORS_ONLN))
+#include "micbench.h"
 
 typedef struct {
     pid_t thread_id;

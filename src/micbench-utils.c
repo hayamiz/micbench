@@ -1,7 +1,6 @@
 
 #include "micbench-utils.h"
 
-
 double
 mb_elapsed_time_from(struct timeval *tv)
 {

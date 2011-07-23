@@ -3,16 +3,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include <ctype.h>
-
 #include <sys/time.h>
-
-// unit
-#define KILO 1000L
-#define KIBI 1024L
-#define MEBI (KIBI*KIBI)
-#define GIBI (KIBI*MEBI)
 
 // macros for struct timeval
 #define TV2LONG(tv)	(((long) (tv).tv_sec) * 1000000L + (tv).tv_usec)
