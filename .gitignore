@@ -20,3 +20,4 @@
 /src/micbench-mem.s
 /src/micbench-mem-inner-rand.c
 /src/micbench-mem-inner.c
+/src/__micbench-*
