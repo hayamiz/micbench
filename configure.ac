@@ -13,21 +13,43 @@ AC_CONFIG_FILES([Makefile
 	src/Makefile])
 
 dnl ******************************
-dnl Check for GLib
+dnl Check for headers
 dnl ******************************
 
-GLIB_REQUIRED=2.12.3
-AC_SUBST(GLIB_REQUIRED)
-AM_PATH_GLIB_2_0([],
-                 [],
-                 [AC_MSG_ERROR([GLib >= $GLIB_REQUIRED required.])],
-                 [gmodule gobject gthread gio])
+AC_HEADER_STDC
+AC_HEADER_STDBOOL
+AC_HEADER_TIME
+
+dnl ******************************
+dnl Check for ruby
+dnl ******************************
+
+AC_ARG_WITH([ruby],
+            AS_HELP_STRING([--with-ruby=PATH],
+                           [Ruby interpreter path (default: auto-detect)]),
+            [RUBY="$withval"])
+AC_PATH_PROG(RUBY, ruby, none)
+if test "$RUBY" = "none"; then
+  AC_MSG_ERROR([Ruby is required.])
+fi
 
 dnl ******************************
 dnl Check for libnuma
 dnl ******************************
 
-AC_CHECK_LIB(numa, numa_available, [], [AC_MSG_ERROR([libnuma required.])])
+AC_CHECK_HEADERS(numa.h, [have_numa_h=yes], [have_numa_h=no])
+AC_CHECK_LIB(numa, numa_available, [have_libnuma=yes], [have_libnuma=no])
 
+if test "$have_libnuma" = "yes"; then
+  LIBS="$LIBS -lnuma"
+fi
 
 AC_OUTPUT
+
+echo
+echo "Configure Result:"
+echo
+echo "  Ruby    : $RUBY"
+echo "  numa.h  : $have_numa_h"
+echo "  libnuma : $have_libnuma"
+echo
