@@ -53,16 +53,9 @@ struct {
     thread_assign_spec_t **assign_specs;
 
     // memory access size
-    char *sz_str;
     long size; // guaranteed to be multiple of 1024
     const char *hugetlbfile;
     long hugepage_size;
-    char *hugepage_sz_str;
-
-    // cpu usage adjustment
-    double cpuusage;
-
-    int num_cswch;
 
     bool verbose;
 } option;
@@ -86,35 +79,6 @@ typedef struct {
     pthread_barrier_t *barrier;
 } th_arg_t;
 
-static GOptionEntry entries[] =
-{
-    {"multi", 'm', 0, G_OPTION_ARG_INT, &option.multi,
-     "Multiplicity of memory access (default: 1)"},
-    {"timeout", 't', 0, G_OPTION_ARG_INT, &option.timeout,
-     "Running time of memory access test (in sec) (default: 60sec)"},
-    {"rand", 'R', 0, G_OPTION_ARG_NONE, &option.rand,
-     "Random memory access (default: sequential access)"},
-    {"seq", 'S', 0, G_OPTION_ARG_NONE, &option.seq,
-     "Sequential memory access (default)"},
-    {"local", 'L', 0, G_OPTION_ARG_NONE, &option.local,
-     "Allocate individual memory region for each thread (default: sharing one region)"},
-    {"assign", 'a', 0, G_OPTION_ARG_STRING, &option.assign_spec_str,
-     "Assign threads to specific cores. Format: <spec> (',' <spec>)*  <spec>:=<thread_id>:<core_id>[:<mem_node_id>]"},
-    {"cpuusage", 'u', 0, G_OPTION_ARG_DOUBLE, &option.cpuusage,
-     "Specify CPU usage in percent (default: 100)"},
-    {"size", 's', 0, G_OPTION_ARG_STRING, &option.sz_str,
-     "Size of memory allocation for each thread (default: 1MB)"},
-    {"hugetlbfile", 'H', 0, G_OPTION_ARG_STRING, &option.hugetlbfile,
-     "Use HugePages if specified. Give a path to hugetlbfs mount point."},
-    {"hugepagesize", 'z', 0, G_OPTION_ARG_STRING, &option.hugepage_sz_str,
-     "Size of HugePage (default: 2MB)"},
-    {"context-switch", 'c', 0, G_OPTION_ARG_INT, &option.num_cswch,
-     "Force context switch for each specified iterations. 0 means no forcing. (default: 0)"},
-    {"verbose", 'v', 0, G_OPTION_ARG_NONE, &option.verbose,
-     "Verbose"},
-    { NULL }
-};
-
 // prototype declarations
 uintptr_t read_tsc(void);
 void do_memory_stress_seq(perf_counter_t* pc, long *working_area, long working_size, pthread_barrier_t *barrier);
@@ -122,15 +86,6 @@ void do_memory_stress_rand(perf_counter_t* pc, long *working_area, long working_
 
 // generate random number which is more than or equal to 'from' and less than 'to' - 1
 // TODO: 48bit
-unsigned long
-rand_range(unsigned long from, unsigned long to)
-{
-    register unsigned long x;
-    x = lrand48();
-    x = x % (to - from) + from;
-
-    return x;
-}
 
 void
 swap_long(long *ptr1, long *ptr2)
@@ -144,71 +99,54 @@ swap_long(long *ptr1, long *ptr2)
 }
 
 void
-parse_args(int *argc, char ***argv)
+parse_args(int argc, char **argv)
 {
-    GError *error = NULL;
-    GOptionContext *context;
-
-    // default values
-    option.multi = 1;
-    option.timeout = 60;
-    option.verbose = false;
-    option.rand = false;
-    option.seq = false;
-    option.local = false;
-    option.assign_spec_str = NULL;
-    option.sz_str = "1M";
-    option.size = MEBI;
-    option.hugetlbfile = NULL;
-    option.hugepage_size = 2L * 1024L * 1024L;
-    option.hugepage_sz_str = NULL;
-    option.cpuusage = 100;
-
-    context = g_option_context_new("");
-    g_option_context_add_main_entries(context, entries, NULL);
-
-    if (!g_option_context_parse(context, argc, argv, &error)){
-        g_print("option parsing failed: %s\n", error->message);
+    if (argc != 10){
+        perror("invalid number of args\n");
         exit(EXIT_FAILURE);
     }
 
-    // check mode
-    if (option.seq && option.rand) {
-        g_print("--seq and --rand cannot be specified at a time\n");
-        exit(EXIT_FAILURE);
+    option.multi = strtol(argv[1], NULL, 10);
+    option.timeout = strtol(argv[2], NULL, 10);
+    if (strcmp("seq", argv[3]) == 0){
+        option.seq = true;
+        option.rand = false;
+    } else if (strcmp("rand", argv[3]) == 0){
+        option.seq = false;
+        option.rand = true;
     }
-    if (!option.rand){ option.seq = true;}
+    if (strcmp("true", argv[4]) == 0){
+        option.local = true;
+    } else {
+        option.local = false;
+    }
+    // TODO: affinity handling
+    option.size = strtol(argv[6], NULL, 10);
+    if (strcmp("false", argv[7]) == 0){
+        option.hugetlbfile = NULL;
+    } else {
+        option.hugetlbfile = argv[7];
+    }
+    option.hugepage_size = strtol(argv[8], NULL, 10);
+    if (strcmp("true", argv[9]) == 0){
+        option.verbose = true;
+    } else {
+        option.verbose = false;
+    }
 
-    option.size = micbench_parse_size(option.sz_str);
-    if (option.size == 0){
-        g_print("Invalid argument for --size: '%s'\n", option.sz_str);
-        goto error;
-    }
+    return;
+
     if (option.size % KIBI != 0){
-        g_print("SIZE must be multiples of 1024.\n");
+        printf("SIZE must be multiples of 1024.\n");
         goto error;
     }
     if (option.seq == true && option.size % (4 * KIBI) != 0){
-        g_print("SIZE must be multiples of 4096 for sequential access mode.\n");
+        printf("SIZE must be multiples of 4096 for sequential access mode.\n");
         goto error;
-    }
-    if (option.size < 1) {
-        g_print("Invalid size specifier: %s\n", option.sz_str);
-        goto error;
-    }
-
-    if (option.hugepage_sz_str != NULL){
-        option.hugepage_size = micbench_parse_size(option.hugepage_sz_str);
-        if (option.hugepage_size == 0){
-            g_print("Invalid argument for --hugepagesize: '%s'\n", option.hugepage_sz_str);
-            goto error;
-        }
     }
 
     return;
 error:
-    g_print(g_option_context_get_help(context, false, NULL));
-    g_option_context_free(context);
     exit(EXIT_FAILURE);
 }
 
@@ -280,12 +218,12 @@ parse_assign_specs(int num_threads, thread_assign_spec_t **specs, const char *sp
             specs[thread_id]->nodemask = 1 << mem_node_id;
 
             if(option.verbose == true)
-                g_printerr("assign spec: thread_id=%d, core_id=%d, mem_node_id=%d\n",
-                           thread_id, core_id, mem_node_id);
+                fprintf(stderr, "assign spec: thread_id=%d, core_id=%d, mem_node_id=%d\n",
+                        thread_id, core_id, mem_node_id);
         } else {
             if(option.verbose == true)
-                g_printerr("assign spec: thread_id=%d, core_id=%d\n",
-                           thread_id, core_id);
+                fprintf(stderr, "assign spec: thread_id=%d, core_id=%d\n",
+                        thread_id, core_id);
         }
     }
 
@@ -298,20 +236,22 @@ thread_handler(void *arg)
     th_arg_t *th_arg = (th_arg_t *) arg;
 
     if (th_arg->assign_spec != NULL) {
-        g_printerr("Set affinity of thread %d\n", th_arg->id);
+        fprintf(stderr, "Set affinity of thread %d\n", th_arg->id);
         sched_setaffinity(syscall(SYS_gettid),
                           NPROCESSOR,
                           &th_arg->assign_spec->mask);
     }
 
-    if (option.cpuusage > 0) {
-        if (option.rand == true){
-            do_memory_stress_rand(&th_arg->pc, th_arg->working_area, th_arg->working_size, th_arg->barrier);
-        } else {
-            do_memory_stress_seq(&th_arg->pc, th_arg->working_area, th_arg->working_size, th_arg->barrier);
-        }
+    if (option.rand == true){
+        do_memory_stress_rand(&th_arg->pc,
+                              th_arg->working_area,
+                              th_arg->working_size,
+                              th_arg->barrier);
     } else {
-        sleep(option.timeout);
+        do_memory_stress_seq(&th_arg->pc,
+                             th_arg->working_area,
+                             th_arg->working_size,
+                             th_arg->barrier);
     }
 
     pthread_exit(NULL);
@@ -337,7 +277,7 @@ read_tsc(void)
 //     struct timespec tp;
 //     clock_gettime(CLOCK_MONOTONIC, &tp);
 //     ret = tp.tv_sec * 1000000000 + tp.tv_nsec;
-//     g_print("%ld\n", ret);
+//     printf("%ld\n", ret);
 //     return ret;
 // }
 
@@ -354,26 +294,18 @@ do_memory_stress_seq(perf_counter_t* pc,
     register long *ptr_end;
 
     register uintptr_t t0, t1;
-    register int cswch_counter = 0;
 
-    if (option.cpuusage < 100) {
-        iter_count = sizeof(long) * 16 * MEBI / working_size;
-    } else {
-        iter_count = sizeof(long) * GIBI / working_size;
-    }
+    iter_count = sizeof(long) * GIBI / working_size;
     if (iter_count == 0) {
         iter_count = 1;
     }
 
     double t = 0;
-    double uf = (100 - option.cpuusage) / option.cpuusage; // cpu usage factor
-    int j = 0;
-    struct timespec sleeptime;
 
     pthread_barrier_wait(barrier);
     GETTIMEOFDAY(&start_tv);
-    while((t = mv_elapsed_time_from(&start_tv)) < option.timeout){
-        // g_print("loop\n");
+    while((t = mb_elapsed_time_from(&start_tv)) < option.timeout){
+        // printf("loop\n");
         t0 = read_tsc();
         for(i = 0;i < iter_count;i++){
             ptr = working_area;
@@ -382,27 +314,12 @@ do_memory_stress_seq(perf_counter_t* pc,
                 // scan & increment 1KB segment
 #include "micbench-mem-inner.c"
             }
-            if (option.num_cswch > 0 && option.num_cswch == cswch_counter++){
-                cswch_counter = 0;
-                sched_yield();
-            }
         }
         t1 = read_tsc();
         pc->clk += t1 - t0;
         pc->ops += MEM_INNER_LOOP_SEQ_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQ_REGION_SIZE) * iter_count;
-        if (option.cpuusage < 100){
-            double timeslice = mb_elapsed_time_from(&start_tv) - t - 0.002 * (option.cpuusage / 40) * (option.cpuusage / 40);
-            double sleepsec = timeslice * uf;
-            sleeptime.tv_sec = floor(sleepsec);
-            sleeptime.tv_nsec = (sleepsec - sleeptime.tv_sec) * 1000000000;
-            nanosleep(&sleeptime, NULL);
-            if (j++ > 1){
-                // g_print("sleepsec: %lf\n", sleepsec);
-                j = 0;
-            }
-        }
     }
-    if(option.verbose == true) g_print("loop end: t=%lf\n", t);
+    if(option.verbose == true) printf("loop end: t=%lf\n", t);
     pc->wallclocktime = t;
 }
 
@@ -420,7 +337,6 @@ do_memory_stress_rand(perf_counter_t* pc,
     long *ptr_end;
 
     register uintptr_t t0, t1;
-    register int cswch_counter = 0;
 
     iter_count = KIBI;
 
@@ -443,7 +359,7 @@ do_memory_stress_rand(perf_counter_t* pc,
     for(i = 0; i < num_cacheline; i++){
         long *ptr1, *ptr1_succ, *ptr2, *ptr2_succ;
     retry:
-        ofst = g_rand_int_range(rand, 0, num_cacheline - i);
+        ofst = mb_rand_range_ulong(0, num_cacheline - i);
         ptr1 = ptr_start + (i * 64 / sizeof(long));
         ptr1_succ = (long *) *ptr1;
         ptr2 = ptr_start + ((i + ofst) * 64 / sizeof(long));
@@ -478,7 +394,7 @@ do_memory_stress_rand(perf_counter_t* pc,
         }
     }
     if(option.verbose == true) {
-        g_printerr("shuffle time: %lf\n", mb_elapsed_time_from(&start_tv));
+        fprintf(stderr, "shuffle time: %lf\n", mb_elapsed_time_from(&start_tv));
     }
 
     GETTIMEOFDAY(&start_tv);
@@ -493,7 +409,7 @@ do_memory_stress_rand(perf_counter_t* pc,
         counter++;
     }
     if (counter != num_cacheline){
-        g_printerr("initialization failed. counter=%ld\n", counter);
+        fprintf(stderr, "initialization failed. counter=%ld\n", counter);
         exit(EXIT_FAILURE);
     }
 
@@ -504,9 +420,6 @@ do_memory_stress_rand(perf_counter_t* pc,
     }
 
     double t = 0;
-    double uf = (100 - option.cpuusage) / option.cpuusage; // cpu usage factor
-    int j = 0;
-    struct timespec sleeptime;
 
     pthread_barrier_wait(barrier);
     GETTIMEOFDAY(&start_tv);
@@ -516,28 +429,12 @@ do_memory_stress_rand(perf_counter_t* pc,
         for(i = 0;i < iter_count;i++){
             // read & write cache line 1024 times
 #include "micbench-mem-inner-rand.c"
-            if (option.num_cswch > 0 && option.num_cswch == ++cswch_counter){
-                cswch_counter = 0;
-                sched_yield();
-            }
         }
         t1 = read_tsc();
         pc->clk += t1 - t0;
         pc->ops += iter_count * MEM_INNER_LOOP_RANDOM_NUM_OPS;
-        // g_print("loop clk=%ld, ops=%ld\n", pc->clk, pc->ops);
-        if (option.cpuusage < 100){
-            double timeslice = mb_elapsed_time_from(&start_tv) - t - 0.002 * (option.cpuusage / 40)*(option.cpuusage / 40);
-            double sleepsec = timeslice * uf;
-            sleeptime.tv_sec = floor(sleepsec);
-            sleeptime.tv_nsec = (sleepsec - sleeptime.tv_sec) * 1000000000;
-            nanosleep(&sleeptime, NULL);
-            if (j++ > 1){
-                // g_print("sleepsec: %lf\n", sleepsec);
-                j = 0;
-            }
-        }
     }
-    g_print("loop end: t=%lf\n", t);
+    printf("loop end: t=%lf\n", t);
     pc->wallclocktime = t;
 }
 
@@ -550,7 +447,7 @@ main(int argc, char **argv)
     int                i;
     pthread_barrier_t *barrier;
 
-    parse_args(&argc, &argv);
+    parse_args(argc, argv);
 
     args = malloc(sizeof(th_arg_t) * option.multi);
     barrier = malloc(sizeof(pthread_barrier_t));
@@ -572,9 +469,9 @@ main(int argc, char **argv)
         }
         int s;
         if ((s = parse_assign_specs(option.multi, option.assign_specs, option.assign_spec_str)) != 0){
-            g_print("Invalid assignment specifier(%d): %s\n",
-                    s,
-                    option.assign_spec_str);
+            printf("Invalid assignment specifier(%d): %s\n",
+                   s,
+                   option.assign_spec_str);
             exit(EXIT_FAILURE);
         }
         for(i = 0;i < option.multi;i++){
@@ -606,10 +503,10 @@ main(int argc, char **argv)
         for(i = 0;i < option.multi;i++){
             if (option.hugetlbfile != NULL) {
                 args[i].fd = open(option.hugetlbfile, O_CREAT | O_RDWR, 0755);
-                g_printerr("mmap_size: %ld\n", mmap_size);
+                fprintf(stderr, "mmap_size: %ld\n", mmap_size);
                 if (args[i].fd == -1){
                     perror("Failed to open hugetlbfs.\n");
-                    g_print("hugetlbfile: %s\n", option.hugetlbfile);
+                    printf("hugetlbfile: %s\n", option.hugetlbfile);
                     exit(EXIT_FAILURE);
                 }
             } else {
@@ -637,15 +534,15 @@ main(int argc, char **argv)
                     != 0){
                     switch(errno){
                     case EFAULT:
-                        g_printerr("EFAULT"); break;
+                        fprintf(stderr, "EFAULT"); break;
                     case EINVAL:
-                        g_printerr("EINVAL"); break;
+                        fprintf(stderr, "EINVAL"); break;
                     case EIO:
-                        g_printerr("EIO"); break;
+                        fprintf(stderr, "EIO"); break;
                     case ENOMEM:
-                        g_printerr("ENOMEM"); break;
+                        fprintf(stderr, "ENOMEM"); break;
                     case EPERM:
-                        g_printerr("EPERM"); break;
+                        fprintf(stderr, "EPERM"); break;
                     }
                     perror(": mbind(2) failed");
                     exit(EXIT_FAILURE);
@@ -657,7 +554,7 @@ main(int argc, char **argv)
             memset(args[i].working_area, 1, mmap_size);
             memset(args[i].working_area, 0, mmap_size);
             if (option.verbose == true)
-                g_printerr("memset time: %f\n", mb_elapsed_time_from(&tv));
+                fprintf(stderr, "memset time: %f\n", mb_elapsed_time_from(&tv));
 
         }
     } else {
@@ -665,7 +562,7 @@ main(int argc, char **argv)
             fd = open(option.hugetlbfile, O_CREAT | O_RDWR, 0755);
             if (fd == -1){
                 perror("Failed to open hugetlbfs.\n");
-                g_print("hugetlbfile: %s\n", option.hugetlbfile);
+                printf("hugetlbfile: %s\n", option.hugetlbfile);
                 exit(EXIT_FAILURE);
             }
         } else {
@@ -679,7 +576,7 @@ main(int argc, char **argv)
                             fd,
                             0);
         if (working_area == MAP_FAILED){
-            g_print("Cannot allocate memory\n");
+            printf("Cannot allocate memory\n");
             exit(EXIT_FAILURE);
         }
 
@@ -692,7 +589,7 @@ main(int argc, char **argv)
 
           maxnodes of mbind(3) seems to require numa_max_node()+2, not
           numa_max_node()+1
-         */
+        */
         if (args[0].assign_spec != NULL){
             if (mbind(working_area,
                       mmap_size,
@@ -702,15 +599,15 @@ main(int argc, char **argv)
                       MPOL_MF_STRICT) != 0){
                 switch(errno){
                 case EFAULT:
-                    g_printerr("EFAULT"); break;
+                    fprintf(stderr, "EFAULT"); break;
                 case EINVAL:
-                    g_printerr("EINVAL"); break;
+                    fprintf(stderr, "EINVAL"); break;
                 case EIO:
-                    g_printerr("EIO"); break;
+                    fprintf(stderr, "EIO"); break;
                 case ENOMEM:
-                    g_printerr("ENOMEM"); break;
+                    fprintf(stderr, "ENOMEM"); break;
                 case EPERM:
-                    g_printerr("EPERM"); break;
+                    fprintf(stderr, "EPERM"); break;
                 }
                 perror(": mbind(2) failed");
                 exit(EXIT_FAILURE);
@@ -720,6 +617,7 @@ main(int argc, char **argv)
         for(i = 0;i < option.multi;i++){
             args[i].working_size = option.size;
             args[i].working_area = working_area;
+            args[i].fd = -1;
         }
     }
 
@@ -736,15 +634,16 @@ main(int argc, char **argv)
     }
     GETTIMEOFDAY(&end_tv);
     pthread_barrier_destroy(barrier);
+    free(barrier);
 
     for(i = 0;i < option.multi;i++){
-        g_free(args[i].self);
+        free(args[i].self);
         if (args[i].fd != -1){
             close(args[i].fd);
         }
         if (option.assign_specs != NULL &&
             option.assign_specs[i] != NULL){
-            g_free(option.assign_specs[i]);
+            free(option.assign_specs[i]);
         }
     }
     if (fd != -1){
@@ -766,51 +665,49 @@ main(int argc, char **argv)
     double tp = ops / wallclocktime;
 
     // print summary
-    g_print("access_pattern\t%s\n"
-            "multiplicity\t%d\n"
-            "local\t%s\n"
-            "assign_spec\t%s\n"
-            "context_switch\t%d\n"
-            "page_size\t%ld\n"
-            "size\t%ld\n"
-            "use_hugepages\t%s\n"
+    printf("access_pattern\t%s\n"
+           "multiplicity\t%d\n"
+           "local\t%s\n"
+           "assign_spec\t%s\n"
+           "page_size\t%ld\n"
+           "size\t%ld\n"
+           "use_hugepages\t%s\n"
            ,
-            (option.seq ? "sequential" : "random"),
-            option.multi,
-            (option.local ? "true" : "false"),
-            (option.assign_spec_str == NULL ? "null" : option.assign_spec_str),
-            option.num_cswch,
-            PAGE_SIZE,
-            option.size,
-            (option.hugetlbfile == NULL ? "false" : "true")
+           (option.seq ? "sequential" : "random"),
+           option.multi,
+           (option.local ? "true" : "false"),
+           (option.assign_spec_str == NULL ? "null" : option.assign_spec_str),
+           PAGE_SIZE,
+           option.size,
+           (option.hugetlbfile == NULL ? "false" : "true")
         );
     if (option.hugetlbfile != NULL) {
-        g_print("hugetlbfile\t%s\n"
-                "hugepage_size\t%ld\n",
-                option.hugetlbfile,
-                option.hugepage_size);
+        printf("hugetlbfile\t%s\n"
+               "hugepage_size\t%ld\n",
+               option.hugetlbfile,
+               option.hugepage_size);
     }
     if (option.seq == true) {
-        g_print("stride_size\t%d\n",
-                MEM_INNER_LOOP_SEQ_STRIDE_SIZE);
+        printf("stride_size\t%d\n",
+               MEM_INNER_LOOP_SEQ_STRIDE_SIZE);
     }
 
-    g_print("total_ops\t%ld\n"
-            "total_clk\t%ld\n"
-            "exec_time\t%lf\n"
-            "ops_per_sec\t%le\n"
-            "clk_per_op\t%le\n"
-            "total_exec_time\t%lf\n",
-            ops,
-            clk,
-            wallclocktime,
-            tp,
-            rt,
-            TV2DOUBLE(end_tv) - TV2DOUBLE(start_tv)
+    printf("total_ops\t%ld\n"
+           "total_clk\t%ld\n"
+           "exec_time\t%lf\n"
+           "ops_per_sec\t%le\n"
+           "clk_per_op\t%le\n"
+           "total_exec_time\t%lf\n",
+           ops,
+           clk,
+           wallclocktime,
+           tp,
+           rt,
+           TV2DOUBLE(end_tv) - TV2DOUBLE(start_tv)
         );
     if (option.seq == true) {
-        g_print("GB_per_sec\t%lf\n",
-                tp * MEM_INNER_LOOP_SEQ_STRIDE_SIZE / 1024 / 1024 / 1024);
+        printf("GB_per_sec\t%lf\n",
+               tp * MEM_INNER_LOOP_SEQ_STRIDE_SIZE / 1024 / 1024 / 1024);
     }
 
 
@@ -821,7 +718,7 @@ main(int argc, char **argv)
     } else {
         munmap(args[0].working_area, mmap_size);
     }
-    g_free(args);
+    free(args);
 
     return 0;
 }

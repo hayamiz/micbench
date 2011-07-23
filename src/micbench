@@ -1,0 +1,355 @@
+#!/usr/bin/env ruby
+
+require 'optparse'
+
+def parse_args(argv)
+  opt = Hash.new
+  parser = OptionParser.new
+
+  opt[:some_option] = 'default value'
+  parser.on('-o', '--option VALUE') do |value|
+    opt[:some_option] = value
+  end
+
+  parser.parse!(argv)
+  opt
+end
+
+def print_usage()
+  print <<EOS
+Usage: #{$0} \x1b[4mcommand\x1b[0m [options]
+EOS
+end
+
+def parse_size(sz_str)
+  if sz_str =~ /\A(\d+)([kKmMgG]?)[bB]?\Z/
+    size = $~[1].to_i
+    sz_prefix = $~[2]
+    case sz_prefix
+    when /\A[kK]\Z/
+      size *= 1024
+    when /\A[mM]\Z/
+      size *= 1024 * 1024
+    when /\A[gG]\Z/
+      size *= 1024 * 1024 * 1024
+    end
+
+    size
+  else
+    nil
+  end
+end
+
+def io_main(argv)
+  def io_parse_args(argv)
+    opt = Hash.new
+    parser = OptionParser.new
+
+    parse_error = lambda do |*msg|
+      if msg.size > 0
+        msg.each do |m|
+          $stderr.puts("#{$0}: #{m}")
+        end
+      end
+      puts parser.help
+      exit(false)
+    end
+
+    # argv[1]
+    opt[:noop] = false
+    parser.on('-n', '--noop',
+              "Dry-run if this option is specified.") do
+      opt[:noop] = true
+    end
+
+    # argv[2]
+    opt[:multi] = 1
+    parser.on('-m', '--multi NUM', Integer,
+              "The number of IO threads (default: 1)") do |num|
+      opt[:multi] = num
+    end
+
+    # argv[3]
+    opt[:affinity] = false
+    parser.on('-a', '--affinity AFFINITY',
+              "CPU and memory affinity setting") do |affinity|
+      opt[:affinity] = affinity
+    end
+
+    # argv[4]
+    opt[:timeout] = 60
+    parser.on('-t', '--timeout NUM',
+              "Running time of IO test (in sec) (default: 60sec)") do |num|
+      if num =~ /\A\d+\Z/
+        opt[:timeout] = num.to_i
+      else
+        parse_error.call("--timeout requires positive integer.")
+      end
+    end
+
+    # argv[5]
+    opt[:mode] = :read
+    parser.on('-w', '--write',
+              "Write operation (default: read operation)") do
+      opt[:mode] = :write
+    end
+
+    # argv[6]
+    opt[:pattern] = :seq
+    seq_specified = false
+    rand_specified = false
+    parser.on('-S', '--seq',
+              "Sequential access mode (default mode)") do
+      seq_specified = true
+      opt[:pattern] = :seq
+    end
+    parser.on('-R', '--rand',
+              "Random access mode (default: sequential access mode)") do
+      seq_specified = true
+      opt[:pattern] = :rand
+    end
+
+    # argv[7]
+    opt[:direct] = false
+    parser.on('-d', '--direct',
+              "Use O_DIRECT (default: no). If this flag is specified, block size must be multiples of block size of devices.") do
+      opt[:direct] = true
+    end
+
+    # argv[8]
+    opt[:blocksize] = 16 * 1024
+    parser.on('-b', '--blocksize SIZE',
+              "Size of IO block (default: 16k)") do |size|
+      unless opt[:blocksize] = parse_size(size)
+        parse_error.call("invalid argument for --size: #{size}")
+      end
+    end
+
+    # argv[9]
+    opt[:offset_start] = 0
+    parser.on('-s', '--offset-start OFFSET',
+              "Offset (in blocks) to start with (default: 0)") do |offset|
+      if offset =~ /\A\d+\Z/
+        opt[:offset_start] = offset.to_i
+      else
+        parse_error.call("--offset-start requires 0 or positive integer.")
+      end
+    end
+
+    # argv[10]
+    opt[:offset_end] = 0
+    parser.on('-s', '--offset-end OFFSET',
+              "Offset (in blocks) to end with (default: the size of device)") do |offset|
+      if offset =~ /\A\d+\Z/
+        opt[:offset_end] = offset.to_i
+      else
+        parse_error.call("--offset-end requires 0 or positive integer.")
+      end
+    end
+
+    # argv[11]
+    opt[:misalign] = 0
+    parser.on('-M', '--misalign OFFSET',
+              "Misalignment from current position (in byte) (default: 0)") do |offset|
+      if offset =~ /\A\d+\Z/
+        opt[:misalign] = offset.to_i
+      else
+        parse_error.call("--misalign requires 0 or positive integer.")
+      end
+    end
+
+    # argv[12]
+    opt[:verbose] = false
+    parser.on('-v', '--verbose') do
+      opt[:verbose] = true
+    end
+
+    parser.parse!(argv)
+
+    if seq_specified && rand_specified
+      parse_error.call("--seq and --rand cannot be specified at a time")
+      parse_error.call
+    end
+
+    # TODO: parse affinity
+
+    opt
+  end
+
+  opt = io_parse_args(argv)
+
+  command = File.join(File.dirname(__FILE__), "micbench-io")
+  command_str = [command,
+                 opt[:noop],
+                 opt[:multi],
+                 opt[:affinity],
+                 opt[:timeout],
+                 opt[:mode],
+                 opt[:pattern],
+                 opt[:direct],
+                 opt[:blocksize],
+                 opt[:offset_start],
+                 opt[:offset_end],
+                 opt[:misalign],
+                 opt[:verbose]].join(" ")
+
+  if ENV['MB_DEBUG']
+    puts command_str
+  end
+  if ENV['MB_LEAKCHECK']
+    command_str = "valgrind --leak-check=full " + command_str
+  end
+  exec(command_str)
+end
+
+def mem_main(argv)
+  def mem_parse_args(argv)
+    opt = Hash.new
+    parser = OptionParser.new
+
+    parse_error = lambda do |*msg|
+      if msg.size > 0
+        msg.each do |m|
+          $stderr.puts("#{$0}: #{m}")
+        end
+      end
+      puts parser.help
+      exit(false)
+    end
+
+    # argv[1]
+    opt[:multi] = 1
+    parser.on('-m', '--multi NUM', Integer,
+              "Multiplicity of memory access (default: 1)") do |num|
+      opt[:multi] = num
+    end
+
+    # argv[2]
+    opt[:timeout] = 60
+    parser.on('-t', '--timeout NUM',
+              "Running time of memory access test (in sec) (default: 60sec)") do |num|
+      if num =~ /\A\d+\Z/
+        opt[:timeout] = num.to_i
+      else
+        parse_error.call("--timeout requires positive integer.")
+      end
+    end
+
+    # argv[3]
+    opt[:mode] = :seq
+    seq_specified = false
+    rand_specified = false
+    parser.on('-S', '--seq',
+              "Sequential memory access mode (default mode)") do
+      seq_specified = true
+      opt[:mode] = :seq
+    end
+    parser.on('-R', '--rand',
+              "Random memory access mode (default: sequential access mode)") do
+      seq_specified = true
+      opt[:mode] = :rand
+    end
+
+    # argv[4]
+    opt[:local] = false
+    parser.on('-L', '--local',
+              "Allocate separated memory region for each thread (default: sharing one region)") do
+      opt[:local] = true
+    end
+
+    # argv[5]
+    opt[:affinity] = false
+    parser.on('-a', '--affinity AFFINITY',
+              "CPU and memory utilization policy") do |affinity|
+      opt[:affinity] = affinity
+    end
+
+    # argv[6]
+    opt[:size] = 2 ** 20
+    parser.on('-s', '--size SIZE',
+              "Size of memory region (default: 1MB)") do |size|
+      unless opt[:size] = parse_size(size)
+        parse_error.call("invalid argument for --size: #{size}")
+      end
+    end
+
+    # argv[7]
+    opt[:hugetlbfile] = false
+    parser.on('-H', '--hugetlbfile PATH',
+              "Use HugePages if specified. Give a path to file on hugetlbfs.") do |path|
+      # TODO: more strict check
+      unless File.exists?(path)
+        parse_error.call("no such file: #{path}")
+      end
+      opt[:hugetlbfile] = path
+    end
+
+    # argv[8]
+    opt[:hugepagesize] = 2 * 2**20
+    parser.on('-z', '--hugepagesize SIZE',
+              "Size of HugePage (default: 2MB)") do |size|
+      # TODO: more strict check
+      unless opt[:hugepagesize] = parse_size(size)
+        parse_error.call("invalid argument for --hugepagesize: #{size}")
+      end
+    end
+
+    # argv[9]
+    opt[:verbose] = false
+    parser.on('-v', '--verbose') do
+      opt[:verbose] = true
+    end
+
+    parser.parse!(argv)
+
+    if seq_specified && rand_specified
+      parse_error.call("--seq and --rand cannot be specified at a time")
+      parse_error.call
+    end
+
+    # TODO: parse affinity
+
+    opt
+  end
+
+  opt = mem_parse_args(argv)
+
+  command = File.join(File.dirname(__FILE__), "micbench-mem")
+  command_str = [command,
+                 opt[:multi],
+                 opt[:timeout],
+                 opt[:mode],
+                 opt[:local],
+                 opt[:affinity],
+                 opt[:size],
+                 opt[:hugetlbfile],
+                 opt[:hugepagesize],
+                 opt[:verbose]].join(" ")
+
+  if ENV['MB_DEBUG']
+    puts command_str
+  end
+  if ENV['MB_LEAKCHECK']
+    command_str = "valgrind --leak-check=full " + command_str
+  end
+  exec(command_str)
+end
+
+def main(argv)
+  if argv.size > 0
+    command = argv.shift
+    case command
+    when "mem"
+      mem_main(argv)
+    else
+      puts "#{$0}: Unknown command '#{command}'"
+    end
+  else
+    print_usage()
+    exit(false)
+  end
+end
+
+if __FILE__ == $0
+  main(ARGV.dup)
+end
