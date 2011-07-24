@@ -71,6 +71,18 @@ dnl ******************************
 
 AC_PATH_PROG(OPCONTROL, opcontrol, none)
 
+dnl find kernel image with debug info
+VMLINUX=none
+if lsb_release --id|grep "\(Ubuntu\|Debian\)"; then
+  AC_CHECK_FILE(/usr/lib/debug/boot/vmlinux-$(uname -r),
+                [have_vmlinux=yes],
+                [have_vmlinux=no])
+  if test "$have_vmlinux" = "yes"; then
+    VMLINUX="/usr/lib/debug/boot/vmlinux-\$(uname -r)"
+    AC_DEFINE([HAVE_VMLINUX], [$VMLINUX], [Define if vmlinux exists.])
+  fi
+fi
+
 AC_OUTPUT
 
 echo
@@ -84,6 +96,7 @@ echo "== required commands =="
 echo "  Ruby    : $RUBY"
 echo "  numactl : $NUMACTL"
 echo
-echo "== optional commands =="
-echo "  OProfile: $OPCONTROL"
+echo "== optional =="
+echo "  OProfile  : $OPCONTROL"
+echo "    vmlinux : $VMLINUX"
 echo
