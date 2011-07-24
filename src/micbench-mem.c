@@ -351,18 +351,6 @@ do_memory_stress_rand(perf_counter_t* pc,
             ptr2 == (long*) *ptr2 ||
             ptr2_succ == (long*)*ptr2_succ){
             goto retry;
-            printf("i=%ld\n"
-                   "ptr1:\t%ld\t->\t%ld\n"
-                   "ptr2:\t%ld\t->\t%ld\n"
-                   "ptr2s:\t%ld\t->\t%ld\n",
-                   i,
-                   (ptr1 - ptr_start) / 8,
-                   ((long*)*ptr1 - ptr_start) / 8,
-                   (ptr2 - ptr_start) / 8,
-                   ((long*)*ptr2 - ptr_start) / 8,
-                   (ptr2_succ - ptr_start) / 8,
-                   ((long*)*ptr2_succ - ptr_start) / 8);
-            exit(1);
         }
     }
     if(option.verbose == true) {
