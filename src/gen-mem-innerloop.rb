@@ -33,8 +33,7 @@ end
 $regnum = 1 # 8
 
 def generate_rand(out)
-  # use r8 and r9
-  num_ops = 2 << 10
+  num_ops = 2 << 4
   out.puts <<EOS
 #define	MEM_INNER_LOOP_RANDOM_NUM_OPS	#{num_ops}
 __asm__ volatile(
@@ -63,7 +62,7 @@ EOS
 end
 
 def generate(out)
-  region_size = 4096 # bytes
+  region_size = 256 # bytes
   stride_size = 16 # 128bit-wide SSE register
   num_register = 16 # xmm* SSE registers
   out.puts <<EOS
