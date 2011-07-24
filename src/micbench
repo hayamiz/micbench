@@ -2,17 +2,27 @@
 
 require 'optparse'
 
-def parse_args(argv)
-  opt = Hash.new
-  parser = OptionParser.new
+$procs = `cat /sys/devices/system/cpu/cpu*/topology/physical_package_id|sort|uniq|wc -l`.to_i
+$logicores = `grep 'processor' /proc/cpuinfo|sort|uniq|wc -l`.to_i
+$physcores_per_proc = `grep 'core id' /proc/cpuinfo|sort|uniq|wc -l`.to_i
+$logicores_per_proc = $logicores / $procs
+$nodes = `numactl --hardware|grep available`.split[1].to_i
 
-  opt[:some_option] = 'default value'
-  parser.on('-o', '--option VALUE') do |value|
-    opt[:some_option] = value
+class BaseCommand
+  class << self
+    def commands
+      @@commands
+    end
+
+    @@commands = {}
+    def command_name(name)
+      @@commands[name] = self
+    end
   end
+end
 
-  parser.parse!(argv)
-  opt
+class MemLatency < BaseCommand
+  command_name "memlatency"
 end
 
 def print_usage()
@@ -37,6 +47,106 @@ def parse_size(sz_str)
     size
   else
     nil
+  end
+end
+
+
+#
+# Format of affinity description
+#
+# <affinity> := <entry> ['+' <affinity>]
+# <entry> := <threads> ':' <CPU_assignment> [':' <mem_assignment>]
+# <threads> := <thread_ids> [',' <threads>]
+# <thread_ids> := <thread_id> ['-' <thread_id>]
+# <CPU_assignment> := <unit_ids> [',' <CPU_assignment>]
+# <unit_ids> := <core_ids> | <node_ids>
+# <core_ids> := 'c' <core_id> ['-' <core_ids>]
+# <node_ids> := 'n' <node_id> ['-' <node_ids>]
+# <mem_assignment> := <node_ids> [',' <mem_assignment>]
+#
+
+# parse affinity description and return a Hash:
+#   key  : THREAD_ID (Integer)
+#   value: [Array of CPU_ID (Integer)] or [Array of CPU_ID (Integer), Array of MEMORY_NODE_ID (Integer)]
+
+def parse_affinity(aff_str)
+  def parse_threads(threads_str)
+    unless threads_str =~ /\A\d+(-\d+)?(,\d+(-\d+)?)*\Z/
+      raise InvalidArgument.new("Invalid threads: #{threads_str}")
+    end
+    threads_str.split(",").map do |thread_ids_str|
+      parse_ids(thread_ids_str)
+    end.flatten.sort.uniq
+  end
+
+  def parse_cpu_assignment(cpu_str)
+    unless cpu_str =~ /\A([cn]\d+(?:-\d+)?)(,[cn]\d+(?:-\d+)?)*\Z/
+      raise InvalidArgument.new("Invalid cpu assignment: #{cpu_str}")
+    end
+    if cpu_str.nil?
+      return (0..($logicores - 1)).to_a
+    end
+    cpu_str.split(",").map do |unit_str|
+      if unit_str[0] == "c"
+        parse_ids(unit_str, "c")
+      elsif unit_str[1] == "n"
+        node_ids = parse_ids(unit_str, "c")
+        node_ids.map do |node_id|
+          cpuid = $logicores_per_proc * node_id
+          (cpuid..(cpuid + $logicores_per_proc - 1)).to_a
+        end.flatten.sort.uniq
+      end
+    end.flatten.sort.uniq
+  end
+
+  def parse_mem_assignment(mem_str)
+    unless mem_str =~ /\A\d+(-\d+)?(,\d+(-\d+)?)*\Z/
+      raise InvalidArgument.new("Invalid memory assignment: #{mem_str}")
+    end
+    if mem_str.nil?
+      return (0..($nodes - 1)).to_a
+    end
+    mem_str.split(",").map do |mem_ids|
+      parse_ids(mem_ids)
+    end.flatten.sort.uniq
+  end
+
+  def parse_ids(ids_str, prefix = '')
+    unless prefix.size == 0 || Regexp.compile("^" + Regexp.quote(prefix)) =~ ids_str
+      raise InvalidArgument.new("Invalid ids: #{ids_str}")
+    end
+    unless ids_str =~ /\A#{Regexp.quote(prefix)}\d+(-\d+)?\Z/
+      raise InvalidArgument.new("Invalid ids: #{ids_str}")
+    end
+    if prefix.size > 0
+      ids_str = ids_str[(prefix.size)..(ids_str.size - 1)]
+    end
+    id1, id2 = ids_str.split("-")
+    id1 = id1.to_i
+    if id2.nil?
+      id1
+    else
+      id2 = id2.to_i
+      if id2 < id1
+        tmp = id2
+        id1 = id2
+        id2 = tmp
+      end
+      (id1..id2).to_a
+    end
+  end
+  thread_masks = Hash.new
+
+  aff_str.split('+').map do |entry|
+    threads, *rest = entry.split()
+    if rest.size < 1 || rest.size > 2
+      raise InvalidArgument.new("Invalid affinity description: #{aff_str}")
+    end
+    cpu_assign, mem_assign = *rest
+
+    thread_id_set = parse_threads(threads)
+    cpu_id_set = parse_cpu_assignment(cpu_assign)
+    memnode_id_set = parse_mem_assignment(mem_assign)
   end
 end
 
@@ -73,7 +183,7 @@ def io_main(argv)
     opt[:affinity] = false
     parser.on('-a', '--affinity AFFINITY',
               "CPU and memory affinity setting") do |affinity|
-      opt[:affinity] = affinity
+      opt[:affinity] = parse_affinity(affinity)
     end
 
     # argv[4]
