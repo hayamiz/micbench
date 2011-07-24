@@ -13,12 +13,19 @@ AC_CONFIG_FILES([Makefile
 	src/Makefile])
 
 dnl ******************************
-dnl Check for headers
+dnl Check for standard headers
 dnl ******************************
 
 AC_HEADER_STDC
 AC_HEADER_STDBOOL
 AC_HEADER_TIME
+AC_CHECK_HEADERS(inttypes.h)
+
+dnl ******************************
+dnl Check for standard programs
+dnl ******************************
+
+AC_PROG_GREP
 
 dnl ******************************
 dnl Check for ruby
@@ -49,12 +56,34 @@ if test "$have_libnuma" = "yes"; then
   LIBS="$LIBS -lnuma"
 fi
 
+dnl ******************************
+dnl Check for numactl
+dnl ******************************
+
+AC_PATH_PROG(NUMACTL, numactl, none)
+if test "$NUMACTL" = "none"; then
+ AC_MSG_ERROR([numactl is required.])
+fi
+
+dnl ******************************
+dnl Check for OProfile
+dnl ******************************
+
+AC_PATH_PROG(OPCONTROL, opcontrol, none)
+
 AC_OUTPUT
 
 echo
 echo "Configure Result:"
 echo
-echo "  Ruby    : $RUBY"
+echo "== required headers and libraries =="
 echo "  numa.h  : $have_numa_h"
 echo "  libnuma : $have_libnuma"
+echo
+echo "== required commands =="
+echo "  Ruby    : $RUBY"
+echo "  numactl : $NUMACTL"
+echo
+echo "== optional commands =="
+echo "  OProfile: $OPCONTROL"
 echo
