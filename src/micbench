@@ -72,7 +72,7 @@ end
 def parse_affinity(aff_str)
   def parse_threads(threads_str)
     unless threads_str =~ /\A\d+(-\d+)?(,\d+(-\d+)?)*\Z/
-      raise InvalidArgument.new("Invalid threads: #{threads_str}")
+      raise ArgumentError.new("Invalid threads: #{threads_str}")
     end
     threads_str.split(",").map do |thread_ids_str|
       parse_ids(thread_ids_str)
@@ -81,7 +81,7 @@ def parse_affinity(aff_str)
 
   def parse_cpu_assignment(cpu_str)
     unless cpu_str =~ /\A([cn]\d+(?:-\d+)?)(,[cn]\d+(?:-\d+)?)*\Z/
-      raise InvalidArgument.new("Invalid cpu assignment: #{cpu_str}")
+      raise ArgumentError.new("Invalid cpu assignment: #{cpu_str}")
     end
     if cpu_str.nil?
       return (0..($logicores - 1)).to_a
@@ -101,7 +101,7 @@ def parse_affinity(aff_str)
 
   def parse_mem_assignment(mem_str)
     unless mem_str =~ /\A\d+(-\d+)?(,\d+(-\d+)?)*\Z/
-      raise InvalidArgument.new("Invalid memory assignment: #{mem_str}")
+      raise ArgumentError.new("Invalid memory assignment: #{mem_str}")
     end
     if mem_str.nil?
       return (0..($nodes - 1)).to_a
@@ -113,10 +113,10 @@ def parse_affinity(aff_str)
 
   def parse_ids(ids_str, prefix = '')
     unless prefix.size == 0 || Regexp.compile("^" + Regexp.quote(prefix)) =~ ids_str
-      raise InvalidArgument.new("Invalid ids: #{ids_str}")
+      raise ArgumentError.new("Invalid ids: #{ids_str}")
     end
     unless ids_str =~ /\A#{Regexp.quote(prefix)}\d+(-\d+)?\Z/
-      raise InvalidArgument.new("Invalid ids: #{ids_str}")
+      raise ArgumentError.new("Invalid ids: #{ids_str}")
     end
     if prefix.size > 0
       ids_str = ids_str[(prefix.size)..(ids_str.size - 1)]
@@ -135,19 +135,26 @@ def parse_affinity(aff_str)
       (id1..id2).to_a
     end
   end
+
   thread_masks = Hash.new
 
-  aff_str.split('+').map do |entry|
-    threads, *rest = entry.split()
+  aff_str.split('+').each do |entry|
+    threads, *rest = entry.split(":")
     if rest.size < 1 || rest.size > 2
-      raise InvalidArgument.new("Invalid affinity description: #{aff_str}")
+      raise ArgumentError.new("Invalid affinity description: #{aff_str}")
     end
     cpu_assign, mem_assign = *rest
 
     thread_id_set = parse_threads(threads)
     cpu_id_set = parse_cpu_assignment(cpu_assign)
     memnode_id_set = parse_mem_assignment(mem_assign)
+
+    thread_id_set.each do |tid|
+      thread_masks[tid] = [cpu_id_set, memnode_id_set]
+    end
   end
+
+  thread_masks
 end
 
 def io_main(argv)
