@@ -89,8 +89,11 @@ def parse_affinity(aff_str)
     cpu_str.split(",").map do |unit_str|
       if unit_str[0] == "c"
         parse_ids(unit_str, "c")
-      elsif unit_str[1] == "n"
-        node_ids = parse_ids(unit_str, "c")
+      elsif unit_str[0] == "n"
+        node_ids = parse_ids(unit_str, "n")
+        if node_ids.is_a? Integer
+          node_ids = [node_ids]
+        end
         node_ids.map do |node_id|
           cpuid = $logicores_per_proc * node_id
           (cpuid..(cpuid + $logicores_per_proc - 1)).to_a
@@ -334,14 +337,14 @@ def mem_main(argv)
       exit(false)
     end
 
-    # argv[1]
+    # shifted argv[0]
     opt[:multi] = 1
     parser.on('-m', '--multi NUM', Integer,
               "Multiplicity of memory access (default: 1)") do |num|
       opt[:multi] = num
     end
 
-    # argv[2]
+    # shifted argv[1]
     opt[:timeout] = 60
     parser.on('-t', '--timeout NUM',
               "Running time of memory access test (in sec) (default: 60sec)") do |num|
@@ -352,7 +355,7 @@ def mem_main(argv)
       end
     end
 
-    # argv[3]
+    # shifted argv[2]
     opt[:mode] = :seq
     seq_specified = false
     rand_specified = false
@@ -367,21 +370,21 @@ def mem_main(argv)
       opt[:mode] = :rand
     end
 
-    # argv[4]
+    # shifted argv[3]
     opt[:local] = false
     parser.on('-L', '--local',
               "Allocate separated memory region for each thread (default: sharing one region)") do
       opt[:local] = true
     end
 
-    # argv[5]
-    opt[:affinity] = false
+    # beginning of argv
+    opt[:affinity] = []
     parser.on('-a', '--affinity AFFINITY',
               "CPU and memory utilization policy") do |affinity|
-      opt[:affinity] = affinity
+      opt[:affinity] = parse_affinity(affinity)
     end
 
-    # argv[6]
+    # shifted argv[4]
     opt[:size] = 2 ** 20
     parser.on('-s', '--size SIZE',
               "Size of memory region (default: 1MB)") do |size|
@@ -390,7 +393,7 @@ def mem_main(argv)
       end
     end
 
-    # argv[7]
+    # shifted argv[5]
     opt[:hugetlbfile] = false
     parser.on('-H', '--hugetlbfile PATH',
               "Use HugePages if specified. Give a path to file on hugetlbfs.") do |path|
@@ -401,7 +404,7 @@ def mem_main(argv)
       opt[:hugetlbfile] = path
     end
 
-    # argv[8]
+    # shifted argv[6]
     opt[:hugepagesize] = 2 * 2**20
     parser.on('-z', '--hugepagesize SIZE',
               "Size of HugePage (default: 2MB)") do |size|
@@ -411,10 +414,15 @@ def mem_main(argv)
       end
     end
 
-    # argv[9]
+    # shifted argv[7]
     opt[:verbose] = false
     parser.on('-v', '--verbose') do
       opt[:verbose] = true
+    end
+
+    opt[:debug] = false
+    parser.on('--debug') do
+      opt[:debug] = true
     end
 
     parser.parse!(argv)
@@ -424,7 +432,15 @@ def mem_main(argv)
       parse_error.call
     end
 
-    # TODO: parse affinity
+    opt[:affinity] = opt[:affinity].map do |tid, entry|
+      cpuset = entry[0]
+      mnodeset = entry[1]
+      max_cpuid = cpuset.max
+      max_mnodeid = mnodeset.max
+      cpu_bitmap = (0..max_cpuid).map{|cpuid| cpuset.include?(cpuid) ? "1" : "0"}.join("")
+      mnode_bitmap = (0..max_mnodeid).map{|nodeid| mnodeset.include?(nodeid) ? "1" : "0"}.join("")
+      ['-a', "#{tid}:#{cpu_bitmap}:#{mnode_bitmap}"]
+    end.flatten
 
     opt
   end
@@ -433,15 +449,15 @@ def mem_main(argv)
 
   command = File.join(File.dirname(__FILE__), "micbench-mem")
   command_str = [command,
+                 opt[:affinity],
                  opt[:multi],
                  opt[:timeout],
                  opt[:mode],
                  opt[:local],
-                 opt[:affinity],
                  opt[:size],
                  opt[:hugetlbfile],
                  opt[:hugepagesize],
-                 opt[:verbose]].join(" ")
+                 opt[:verbose]].flatten.join(" ")
 
   if ENV['MB_DEBUG']
     puts command_str
@@ -449,6 +465,8 @@ def mem_main(argv)
   if ENV['MB_LEAKCHECK']
     command_str = "valgrind --leak-check=full " + command_str
   end
+  puts command_str
+return
   exec(command_str)
 end
 
