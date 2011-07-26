@@ -78,7 +78,7 @@ if lsb_release --id|grep "\(Ubuntu\|Debian\)"; then
                 [have_vmlinux=yes],
                 [have_vmlinux=no])
   if test "$have_vmlinux" = "yes"; then
-    VMLINUX="/usr/lib/debug/boot/vmlinux-\$(uname -r)"
+    VMLINUX="/usr/lib/debug/boot/vmlinux-$(uname -r)"
     AC_DEFINE([HAVE_VMLINUX], [$VMLINUX], [Define if vmlinux exists.])
   fi
 fi
