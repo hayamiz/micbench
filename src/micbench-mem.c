@@ -78,29 +78,28 @@ parse_args(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    option.multi = strtol(argv[1], NULL, 10);
-    option.timeout = strtol(argv[2], NULL, 10);
-    if (strcmp("seq", argv[3]) == 0){
+    option.multi = strtol(argv[0], NULL, 10);
+    option.timeout = strtol(argv[1], NULL, 10);
+    if (strcmp("seq", argv[2]) == 0){
         option.seq = true;
         option.rand = false;
-    } else if (strcmp("rand", argv[3]) == 0){
+    } else if (strcmp("rand", argv[2]) == 0){
         option.seq = false;
         option.rand = true;
     }
-    if (strcmp("true", argv[4]) == 0){
+    if (strcmp("true", argv[3]) == 0){
         option.local = true;
     } else {
         option.local = false;
     }
-    // TODO: affinity handling
-    option.size = strtol(argv[6], NULL, 10);
-    if (strcmp("false", argv[7]) == 0){
+    option.size = strtol(argv[4], NULL, 10);
+    if (strcmp("false", argv[5]) == 0){
         option.hugetlbfile = NULL;
     } else {
-        option.hugetlbfile = argv[7];
+        option.hugetlbfile = argv[5];
     }
-    option.hugepage_size = strtol(argv[8], NULL, 10);
-    if (strcmp("true", argv[9]) == 0){
+    option.hugepage_size = strtol(argv[6], NULL, 10);
+    if (strcmp("true", argv[7]) == 0){
         option.verbose = true;
     } else {
         option.verbose = false;
