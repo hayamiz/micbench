@@ -14,17 +14,19 @@ micbench_mem_SOURCES =  micbench-mem.c micbench-utils.c
 micbench_mem_LDFLAGS = \
 	-pthread
 
-CLEANFILES = micbench-mem-inner.c micbench-mem-inner-rand.c __micbench-io __micbench-mem
+CLEANFILES = micbench-mem-inner.c micbench-mem-inner-short.c micbench-mem-inner-rand.c __micbench-io __micbench-mem
 
 __micbench-%: micbench-%
 	strip -o $@ $<
 
 all: __micbench-io __micbench-mem
 
-micbench-mem.c: micbench-mem-inner.c micbench-mem-inner-rand.c
+micbench-mem.c: micbench-mem-inner.c micbench-mem-inner-rand.c micbench-mem-inner-short.c
 
 micbench-mem-inner.c: ./gen-mem-innerloop.rb
 	ruby $^ > $@
+micbench-mem-inner-short.c: ./gen-mem-innerloop.rb
+	ruby $^ --short > $@
 
 micbench-mem-inner-rand.c: ./gen-mem-innerloop.rb
 	ruby $^ --random > $@
