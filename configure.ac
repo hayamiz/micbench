@@ -19,7 +19,8 @@ dnl ******************************
 AC_HEADER_STDC
 AC_HEADER_STDBOOL
 AC_HEADER_TIME
-AC_CHECK_HEADERS(inttypes.h)
+AC_CHECK_HEADER(inttypes.h, [], [AC_MSG_ERROR([inttypes.h required.])])
+AC_CHECK_HEADER(getopt.h, [], [AC_MSG_ERROR([getopt.h required.])])
 
 dnl ******************************
 dnl Check for standard programs
