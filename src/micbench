@@ -82,11 +82,11 @@ def parse_affinity(aff_str)
   end
 
   def parse_cpu_assignment(cpu_str)
-    unless cpu_str =~ /\A([cn]\d+(?:-\d+)?)(,[cn]\d+(?:-\d+)?)*\Z/
-      raise ArgumentError.new("Invalid cpu assignment: #{cpu_str}")
-    end
     if cpu_str.nil?
       return (0..($logicores - 1)).to_a
+    end
+    unless cpu_str =~ /\A([cn]\d+(?:-\d+)?)(,[cn]\d+(?:-\d+)?)*\Z/
+      raise ArgumentError.new("Invalid cpu assignment: #{cpu_str}")
     end
     cpu_str.split(",").map do |unit_str|
       if unit_str[0] == "c"
@@ -105,11 +105,11 @@ def parse_affinity(aff_str)
   end
 
   def parse_mem_assignment(mem_str)
-    unless mem_str =~ /\A\d+(-\d+)?(,\d+(-\d+)?)*\Z/
-      raise ArgumentError.new("Invalid memory assignment: #{mem_str}")
-    end
     if mem_str.nil?
       return (0..($nodes - 1)).to_a
+    end
+    unless mem_str =~ /\A\d+(-\d+)?(,\d+(-\d+)?)*\Z/
+      raise ArgumentError.new("Invalid memory assignment: #{mem_str}")
     end
     mem_str.split(",").map do |mem_ids|
       parse_ids(mem_ids)
