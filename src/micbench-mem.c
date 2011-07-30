@@ -334,6 +334,10 @@ main(int argc, char **argv)
     int                i;
     pthread_barrier_t *barrier;
 
+    if (getenv("MICBENCH") == NULL) {
+        fprintf(stderr, "This process may be invoked without micbench command.\n");
+    }
+
     parse_args(argc, argv);
 
     args = malloc(sizeof(th_arg_t) * option.multi);
