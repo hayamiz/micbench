@@ -3,26 +3,17 @@
 
 #include "config.h"
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/ioctl.h>
-#include <fcntl.h>
-#include <sys/syscall.h>
-#include <sys/mman.h>
-#include <unistd.h>
-#include <errno.h>
-#include <linux/fs.h>
-#include <sys/time.h>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <ctype.h>
 #include <string.h>
 #include <unistd.h>
+#include <getopt.h>
 #include <math.h>
 #include <inttypes.h>
-
+#include <errno.h>
+#include <fcntl.h>
 #include <sched.h>
 #include <malloc.h>
 #include <pthread.h>
@@ -31,6 +22,14 @@
 #    include <numa.h>
 #    include <numaif.h>
 #endif
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/ioctl.h>
+#include <sys/syscall.h>
+#include <sys/mman.h>
+#include <sys/time.h>
+#include <linux/fs.h>
 
 
 // unit
