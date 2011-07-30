@@ -18,6 +18,7 @@ mb_make_affinity(void)
 void
 mb_free_affinity(mb_affinity_t *affinity)
 {
+    if (affinity == NULL) return;
     if (affinity->optarg != NULL)
         free(affinity->optarg);
     free(affinity);

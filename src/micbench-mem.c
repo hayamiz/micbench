@@ -139,7 +139,13 @@ parse_args(int argc, char **argv)
 void *
 thread_handler(void *arg)
 {
+    pid_t tid;
     th_arg_t *th_arg = (th_arg_t *) arg;
+
+    if (th_arg->affinity != NULL){
+        tid = syscall(SYS_gettid);
+        sched_setaffinity(tid, sizeof(cpu_set_t), &th_arg->affinity->cpumask);
+    }
 
     if (option.rand == true){
         do_memory_stress_rand(&th_arg->pc,
@@ -350,6 +356,9 @@ main(int argc, char **argv)
         args[i].pc.ops = 0;
         args[i].pc.clk = 0;
         args[i].barrier = barrier;
+        if (option.affinities != NULL) {
+            args[i].affinity = option.affinities[i];
+        }
     }
 
     size_t mmap_size;
@@ -575,6 +584,12 @@ main(int argc, char **argv)
         }
     } else {
         munmap(args[0].working_area, mmap_size);
+    }
+
+    if (option.affinities != NULL){
+        for(i = 0;i < option.multi;i++){
+            mb_free_affinity(option.affinities[i]);
+        }
     }
 
     for(i = 0;i < option.multi;i++){
