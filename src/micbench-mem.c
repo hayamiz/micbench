@@ -2,15 +2,10 @@
 
 #include "micbench.h"
 
-typedef struct {
-    pid_t thread_id;
-    cpu_set_t mask;
-    unsigned long nodemask;
-} thread_assign_spec_t;
-
 struct {
     // multiplicity of memory access
     int multi;
+    mb_affinity_t **affinities;
 
     // memory access mode
     bool seq;
@@ -19,10 +14,6 @@ struct {
 
     // timeout
     int timeout;
-
-    // specifier string of assignments of threads to each (logical) processor
-    const char *assign_spec_str;
-    thread_assign_spec_t **assign_specs;
 
     // memory access size
     long size; // guaranteed to be multiple of 1024
@@ -33,20 +24,20 @@ struct {
 } option;
 
 typedef struct perf_counter_rec {
-    uintptr_t ops;
-    uintptr_t clk;
+    unsigned long ops;
+    unsigned long clk;
     double wallclocktime;
 } perf_counter_t;
 
 typedef struct {
-    int id;
-    pthread_t *self;
-    thread_assign_spec_t *assign_spec;
+    int            id;
+    pthread_t     *self;
+    mb_affinity_t *affinity;
 
-    long *working_area; // working area
-    long working_size; // size of working area
-    int fd;
-    perf_counter_t pc;
+    long           *working_area; // working area
+    long            working_size; // size of working area
+    int             fd;
+    perf_counter_t  pc;
 
     pthread_barrier_t *barrier;
 } th_arg_t;
@@ -73,145 +64,82 @@ swap_long(long *ptr1, long *ptr2)
 void
 parse_args(int argc, char **argv)
 {
-    if (argc != 10){
-        perror("invalid number of args\n");
-        exit(EXIT_FAILURE);
-    }
+    char optchar;
+    int idx;
 
-    option.multi = strtol(argv[0], NULL, 10);
-    option.timeout = strtol(argv[1], NULL, 10);
-    if (strcmp("seq", argv[2]) == 0){
-        option.seq = true;
-        option.rand = false;
-    } else if (strcmp("rand", argv[2]) == 0){
-        option.seq = false;
-        option.rand = true;
-    }
-    if (strcmp("true", argv[3]) == 0){
-        option.local = true;
-    } else {
-        option.local = false;
-    }
-    option.size = strtol(argv[4], NULL, 10);
-    if (strcmp("false", argv[5]) == 0){
-        option.hugetlbfile = NULL;
-    } else {
-        option.hugetlbfile = argv[5];
-    }
-    option.hugepage_size = strtol(argv[6], NULL, 10);
-    if (strcmp("true", argv[7]) == 0){
-        option.verbose = true;
-    } else {
-        option.verbose = false;
-    }
+    option.multi = 1;
+    option.timeout = 10;
+    option.seq = true;
+    option.rand = false;
+    option.local = false;
+    option.affinities = NULL;
+    option.size = 1 << 20; // 1MB
+    option.hugetlbfile = NULL;
+    option.hugepage_size = 1 << 21; // 2MB
+    option.verbose = false;
 
-    return;
+    optind = 1;
+    while ((optchar = getopt(argc, argv, "+m:t:SRLa:s:H:z:v")) != -1) {
+        switch(optchar){
+        case 'm': // multi
+            option.multi = strtol(optarg, NULL, 10);
+            break;
+        case 't': // timeout
+            option.timeout = strtol(optarg, NULL, 10);
+            break;
+        case 'S': // seq.
+            option.seq = true;
+            option.rand = false;
+            break;
+        case 'R': // rand.
+            option.seq = false;
+            option.rand = true;
+            break;
+        case 'L': // local
+            option.local = true;
+            break;
+        case 'a': // affinity
+        {
+            mb_affinity_t *aff;
 
-    if (option.size % KIBI != 0){
-        printf("SIZE must be multiples of 1024.\n");
-        goto error;
-    }
-    if (option.seq == true && option.size % (4 * KIBI) != 0){
-        printf("SIZE must be multiples of 4096 for sequential access mode.\n");
-        goto error;
-    }
-
-    return;
-error:
-    exit(EXIT_FAILURE);
-}
-
-
-/*
- * Thread assignment spec
- *
- * <assign_spec> := <thread_spec> (',' <thread_spec>)*
- * <thread_spec> := <thread_id> ':' <physical_core_id> [':' <mem_node_id>]
- * <thread_id> := [1-9][0-9]* | 0
- * <physical_core_id> := [1-9][0-9]* | 0
- * <mem_mode> := [1-9][0-9]* | 0
- *
- */
-int
-parse_assign_specs(int num_threads, thread_assign_spec_t **specs, const char *spec_str)
-{
-    int thread_id;
-    int core_id;
-    int mem_node_id;
-
-    const char *str;
-    char *endptr;
-
-    str = spec_str;
-
-    while(*str != '\0'){
-        if (*str == ',') {
-            str++;
-        }
-
-        thread_id = strtod(str, &endptr);
-        if (endptr == str) {
-            return -1;
-        }
-        str = endptr;
-        if (*str++ != ':'){
-            return -2;
-        }
-
-        core_id = strtod(str, &endptr);
-        if (endptr == str) {
-            return -3;
-        }
-        str = endptr;
-
-        if (thread_id >= num_threads){
-            return -4;
-        } else {
-            if (specs[thread_id] == NULL){
-                specs[thread_id] = malloc(sizeof(thread_assign_spec_t));
+            // check for -m option
+            for(idx = optind; idx < argc; idx++){
+                if (strcmp("-m", argv[idx]) == 0) {
+                    perror("-m option must be specified before -a.\n");
+                    exit(EXIT_FAILURE);
+                }
             }
-            specs[thread_id]->thread_id = thread_id;
-
-            CPU_ZERO(&specs[thread_id]->mask);
-            CPU_SET(core_id, &specs[thread_id]->mask);
-
-            specs[thread_id]->nodemask = 0;
-        }
-
-        if (*str == ':'){
-            str++;
-            mem_node_id = strtod(str, &endptr);
-            if (str == endptr){
-                return -5;
+            if (option.affinities == NULL){
+                option.affinities = malloc(sizeof(mb_affinity_t *) * option.multi);
             }
-            str = endptr;
 
-            specs[thread_id]->nodemask = 1 << mem_node_id;
-
-            if(option.verbose == true)
-                fprintf(stderr, "assign spec: thread_id=%d, core_id=%d, mem_node_id=%d\n",
-                        thread_id, core_id, mem_node_id);
-        } else {
-            if(option.verbose == true)
-                fprintf(stderr, "assign spec: thread_id=%d, core_id=%d\n",
-                        thread_id, core_id);
+            if ((aff = mb_parse_affinity(NULL, optarg)) == NULL){
+                fprintf(stderr, "Invalid argument for -a: %s\n", optarg);
+            }
+            aff->optarg = strdup(optarg);
+            option.affinities[aff->tid] = aff;
+        }
+            break;
+        case 's': // size
+            option.size = strtol(optarg, NULL, 10);
+            break;
+        case 'H': // hugetlbfile
+            option.hugetlbfile = strdup(optarg);
+            break;
+        case 'z': // hugepagesize
+            option.hugepage_size = strtol(optarg, NULL, 10);
+            break;
+        case 'v': // verbose
+            option.verbose = true;
+            break;
         }
     }
-
-    return 0;
 }
 
 void *
 thread_handler(void *arg)
 {
     th_arg_t *th_arg = (th_arg_t *) arg;
-
-    if (th_arg->assign_spec != NULL) {
-        fprintf(stderr, "Set affinity of thread %d\n", th_arg->id);
-        sched_setaffinity(syscall(SYS_gettid),
-                          NPROCESSOR,
-                          &th_arg->assign_spec->mask);
-    }
 
     if (option.rand == true){
         do_memory_stress_rand(&th_arg->pc,
@@ -415,29 +343,9 @@ main(int argc, char **argv)
     for(i = 0;i < option.multi;i++){
         args[i].id = i;
         args[i].self = malloc(sizeof(pthread_t));
-        args[i].assign_spec = NULL;
         args[i].pc.ops = 0;
         args[i].pc.clk = 0;
         args[i].barrier = barrier;
-    }
-
-    if (option.assign_spec_str != NULL) {
-        option.assign_specs = malloc(sizeof(thread_assign_spec_t *) * option.multi);
-        for (i = 0;i < option.multi;i++){
-            option.assign_specs[i] = NULL;
-        }
-        int s;
-        if ((s = parse_assign_specs(option.multi, option.assign_specs, option.assign_spec_str)) != 0){
-            printf("Invalid assignment specifier(%d): %s\n",
-                   s,
-                   option.assign_spec_str);
-            exit(EXIT_FAILURE);
-        }
-        for(i = 0;i < option.multi;i++){
-            if (option.assign_specs[i] != NULL){
-                args[i].assign_spec = option.assign_specs[i];
-            }
-        }
     }
 
     size_t mmap_size;
@@ -483,11 +391,11 @@ main(int argc, char **argv)
                 exit(EXIT_FAILURE);
             }
 
-            if (args[i].assign_spec != NULL){
+            if (args[i].affinity != NULL){
                 if (mbind(args[i].working_area,
                           mmap_size,
                           MPOL_BIND,
-                          &args[i].assign_spec->nodemask,
+                          &args[i].affinity->nodemask,
                           numa_max_node()+2,
                           MPOL_MF_STRICT)
                     != 0){
@@ -549,11 +457,11 @@ main(int argc, char **argv)
           maxnodes of mbind(3) seems to require numa_max_node()+2, not
           numa_max_node()+1
         */
-        if (args[0].assign_spec != NULL){
+        if (args[0].affinity != NULL){
             if (mbind(working_area,
                       mmap_size,
                       MPOL_BIND,
-                      &args[0].assign_spec->nodemask,
+                      &args[0].affinity->nodemask,
                       numa_max_node()+2,
                       MPOL_MF_STRICT) != 0){
                 switch(errno){
@@ -595,23 +503,12 @@ main(int argc, char **argv)
     pthread_barrier_destroy(barrier);
     free(barrier);
 
-    for(i = 0;i < option.multi;i++){
-        free(args[i].self);
-        if (args[i].fd != -1){
-            close(args[i].fd);
-        }
-        if (option.assign_specs != NULL &&
-            option.assign_specs[i] != NULL){
-            free(option.assign_specs[i]);
-        }
-    }
     if (fd != -1){
         close(fd);
     }
 
-
-    int64_t ops = 0;
-    int64_t clk = 0;
+    unsigned long ops = 0;
+    unsigned long clk = 0;
     double wallclocktime = 0.0;
     for(i = 0;i < option.multi;i++){
         ops += args[i].pc.ops;
@@ -627,7 +524,6 @@ main(int argc, char **argv)
     printf("access_pattern\t%s\n"
            "multiplicity\t%d\n"
            "local\t%s\n"
-           "assign_spec\t%s\n"
            "page_size\t%ld\n"
            "size\t%ld\n"
            "use_hugepages\t%s\n"
@@ -635,7 +531,6 @@ main(int argc, char **argv)
            (option.seq ? "sequential" : "random"),
            option.multi,
            (option.local ? "true" : "false"),
-           (option.assign_spec_str == NULL ? "null" : option.assign_spec_str),
            PAGE_SIZE,
            option.size,
            (option.hugetlbfile == NULL ? "false" : "true")
@@ -677,6 +572,14 @@ main(int argc, char **argv)
     } else {
         munmap(args[0].working_area, mmap_size);
     }
+
+    for(i = 0;i < option.multi;i++){
+        free(args[i].self);
+        if (args[i].fd != -1){
+            close(args[i].fd);
+        }
+    }
+
     free(args);
 
     return 0;
