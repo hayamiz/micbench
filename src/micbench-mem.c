@@ -206,23 +206,38 @@ do_memory_stress_seq(perf_counter_t* pc,
     }
 
     double t = 0;
-
     pthread_barrier_wait(barrier);
     GETTIMEOFDAY(&start_tv);
-    while((t = mb_elapsed_time_from(&start_tv)) < option.timeout){
-        // printf("loop\n");
-        t0 = read_tsc();
-        for(i = 0;i < iter_count;i++){
-            ptr = working_area;
-            ptr_end = working_area + (working_size / sizeof(long));
-            for(;ptr < ptr_end;){
-                // scan & increment 1KB segment
-#include "micbench-mem-inner.c"
+    if (option.size < 1024) {
+        while((t = mb_elapsed_time_from(&start_tv)) < option.timeout){
+            t0 = read_tsc();
+            for(i = 0;i < iter_count;i++){
+                ptr = working_area;
+                ptr_end = working_area + (working_size / sizeof(long));
+                for(;ptr < ptr_end;){
+                    // scan & increment 1KB segment
+#include "micbench-mem-inner-short.c"
+                }
             }
+            t1 = read_tsc();
+            pc->clk += t1 - t0;
+            pc->ops += MEM_INNER_LOOP_SEQ_SHORT_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQ_SHORT_REGION_SIZE) * iter_count;
         }
-        t1 = read_tsc();
-        pc->clk += t1 - t0;
-        pc->ops += MEM_INNER_LOOP_SEQ_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQ_REGION_SIZE) * iter_count;
+    } else {
+        while((t = mb_elapsed_time_from(&start_tv)) < option.timeout){
+            t0 = read_tsc();
+            for(i = 0;i < iter_count;i++){
+                ptr = working_area;
+                ptr_end = working_area + (working_size / sizeof(long));
+                for(;ptr < ptr_end;){
+                    // scan & increment 1KB segment
+#include "micbench-mem-inner.c"
+                }
+            }
+            t1 = read_tsc();
+            pc->clk += t1 - t0;
+            pc->ops += MEM_INNER_LOOP_SEQ_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQ_REGION_SIZE) * iter_count;
+        }
     }
     if(option.verbose == true) printf("loop end: t=%lf\n", t);
     pc->wallclocktime = t;
