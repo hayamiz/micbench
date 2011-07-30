@@ -342,14 +342,14 @@ def mem_main(argv)
     # shifted argv[0]
     opt[:multi] = 1
     parser.on('-m', '--multi NUM', Integer,
-              "Multiplicity of memory access (default: 1)") do |num|
+              "Multiplicity of memory access (default: #{opt[:multi]})") do |num|
       opt[:multi] = num
     end
 
     # shifted argv[1]
-    opt[:timeout] = 60
+    opt[:timeout] = 10
     parser.on('-t', '--timeout NUM',
-              "Running time of memory access test (in sec) (default: 60sec)") do |num|
+              "Running time of memory access test (in sec) (default: #{opt[:timeout]}sec)") do |num|
       if num =~ /\A\d+\Z/
         opt[:timeout] = num.to_i
       else
@@ -396,7 +396,7 @@ def mem_main(argv)
     end
 
     # shifted argv[5]
-    opt[:hugetlbfile] = false
+    opt[:hugetlbfile] = nil
     parser.on('-H', '--hugetlbfile PATH',
               "Use HugePages if specified. Give a path to file on hugetlbfs.") do |path|
       # TODO: more strict check
@@ -434,13 +434,15 @@ def mem_main(argv)
       parse_error.call
     end
 
-    opt[:affinity] = opt[:affinity].map do |tid, entry|
+    opt[:affinity] = opt[:affinity].select do |tid,entry|
+      tid < opt[:multi]
+    end.map do |tid, entry|
       cpuset = entry[0]
       mnodeset = entry[1]
       max_cpuid = cpuset.max
       max_mnodeid = mnodeset.max
-      cpu_bitmap = (0..max_cpuid).map{|cpuid| cpuset.include?(cpuid) ? "1" : "0"}.join("")
-      mnode_bitmap = (0..max_mnodeid).map{|nodeid| mnodeset.include?(nodeid) ? "1" : "0"}.join("")
+      cpu_bitmap = (0..[max_cpuid, $logicores - 1].min).map{|cpuid| cpuset.include?(cpuid) ? "1" : "0"}.join("")
+      mnode_bitmap = (0..[max_mnodeid, $nodes - 1].min).map{|nodeid| mnodeset.include?(nodeid) ? "1" : "0"}.join("")
       ['-a', "#{tid}:#{cpu_bitmap}:#{mnode_bitmap}"]
     end.flatten
 
@@ -451,15 +453,15 @@ def mem_main(argv)
 
   command = File.join(File.dirname(__FILE__), "micbench-mem")
   command_str = [command,
-                 opt[:affinity],
-                 opt[:multi],
-                 opt[:timeout],
-                 opt[:mode],
-                 opt[:local],
-                 opt[:size],
-                 opt[:hugetlbfile],
-                 opt[:hugepagesize],
-                 opt[:verbose]].flatten.join(" ")
+                 "-m", opt[:multi],
+                 "-t", opt[:timeout],
+                 (opt[:mode] == :rand ? "-R" : "-S"),
+                 (opt[:local] ? "-L" : []),
+                 "-s", opt[:size],
+                 (opt[:hugetlbfile] ? ["-H", opt[:hugetlbfile]] : []),
+                 "-z", opt[:hugepagesize],
+                 (opt[:verbose] ? "-v" : []),
+                 opt[:affinity]].flatten.join(" ")
 
   if ENV['MB_DEBUG']
     puts command_str
@@ -467,8 +469,6 @@ def mem_main(argv)
   if ENV['MB_LEAKCHECK']
     command_str = "valgrind --leak-check=full " + command_str
   end
-  puts command_str
-return
   exec(command_str)
 end
 
