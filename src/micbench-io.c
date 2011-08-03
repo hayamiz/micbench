@@ -21,8 +21,7 @@ static struct {
     bool write;
 
     // thread affinity assignment
-    const char *assignment_str;
-    thread_assignment_t **assigns;
+    mb_affinity_t **affinities;
 
     // timeout
     int timeout;
@@ -82,9 +81,11 @@ getsize(const char *path)
     size = -1;
 
     if ((fd = open(path, O_RDONLY)) == -1){
+        perror("Failed to open device or file\n");
         return -1;
     }
     if (fstat(fd, &statbuf) == -1){
+        perror("fstat(2) failed.\n");
         goto finally;
     }
 
@@ -125,7 +126,6 @@ device_or_file  %s\n\
 access_pattern  %s\n\
 access_mode     %s\n\
 direct_io       %s\n\
-thread affinity	%s\n\
 timeout         %d\n\
 block_size      %d\n\
 offset_start    %ld\n\
@@ -137,7 +137,6 @@ misalign        %ld\n\
                (option.seq ? "sequential" : "random"),
                (option.read ? "read" : "write"),
                (option.direct ? "yes" : "no"),
-               option.assignment_str,
                option.timeout,
                option.blk_sz,
                option.ofst_start,
@@ -160,116 +159,16 @@ accum_io_time %lf [sec]\n\
             result->iowait_time);
 }
 
-/*
- * Thread affinity specification
- *
- * <assignments> := <assignment> (',' <assignments>)*
- * <assignment> := <threads> ':' <physical_core_id> [':' <mem_node_id>]
- * <threads> := <thread_id> | <thread_id> '-' <thread_id>
- * <thread_id> := [1-9][0-9]* | 0
- * <physical_core_id> := [1-9][0-9]* | 0
- * <mem_mode> := [1-9][0-9]* | 0
- *
- */
-int
-parse_thread_assignment(int num_threads, thread_assignment_t **assigns, const char *assignment_str)
-{
-    int thread_id;
-    int thread_id_end;
-    int core_id;
-    int mem_node_id;
-    int i;
-
-    const char *str;
-    char *endptr;
-
-    for(i = 0; i < num_threads; i++){
-        assigns[i] = NULL;
-    }
-
-    str = assignment_str;
-
-    while(*str != '\0'){
-        if (*str == ',') {
-            str++;
-        }
-
-        /* parse thread id */
-        thread_id = strtod(str, &endptr);
-        if (endptr == str) {
-            return -1;
-        }
-        str = endptr;
-        if (*str == '-'){       /* if multiple threads are specified like '0-7' */
-            str++;
-            thread_id_end = strtod(str, &endptr);
-            if (endptr == str){
-                return -1;
-            }
-            str = endptr;
-        } else {
-            thread_id_end = thread_id;
-        }
-
-        if (*str++ != ':'){
-            return -2;
-        }
-
-        /* parse physical core id */
-        core_id = strtod(str, &endptr);
-        if (endptr == str) {
-            return -3;
-        }
-        str = endptr;
-
-        /* parse memory node id if specified */
-        if (*str == ':'){
-            str++;
-            mem_node_id = strtod(str, &endptr);
-            if (str == endptr){
-                return -5;
-            }
-            str = endptr;
-        } else {
-            mem_node_id = -1;
-        }
-
-
-        if (thread_id >= num_threads || thread_id_end >= num_threads){
-            fprintf(stderr, "num_threads: %d, thread_id: %d, thread_id_end: %d\n", num_threads, thread_id, thread_id_end);
-            return -4;
-        } else {
-            for(; thread_id <= thread_id_end; thread_id++){
-                if (assigns[thread_id] == NULL){
-                    assigns[thread_id] = malloc(sizeof(thread_assignment_t));
-                }
-                assigns[thread_id]->thread_id = thread_id;
-
-                CPU_ZERO(&assigns[thread_id]->mask);
-                CPU_SET(core_id, &assigns[thread_id]->mask);
-
-                assigns[thread_id]->nodemask = 0;
-
-                if (mem_node_id >= 0){
-                    assigns[thread_id]->nodemask = 1 << mem_node_id;
-                }
-            }
-        }
-    }
-
-    return 0;
-}
-
-
-
 void
 parse_args(int argc, char **argv)
 {
+    char optchar;
+    int idx;
+
     // default values
     option.noop = false;
     option.multi = 1;
-    option.assignment_str = NULL;
-    option.assigns = NULL;
+    option.affinities = NULL;
     option.timeout = 60;
     option.read = true;
     option.write = false;
@@ -282,62 +181,81 @@ parse_args(int argc, char **argv)
     option.misalign = 0;
     option.verbose = false;
 
-    // device or file
-    if (argc < 14){
+    optind = 1;
+    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdWb:s:e:z:v")) != -1){
+        switch(optchar){
+        case 'N': // noop
+            option.noop = true;
+            break;
+        case 'm': // multiplicity
+            option.multi = strtol(optarg, NULL, 10);
+            break;
+        case 'a': // affinity
+        {
+            mb_affinity_t *aff;
+
+            // check for -m option
+            for(idx = optind; idx < argc; idx++){
+                if (strcmp("-m", argv[idx]) == 0) {
+                    perror("-m option must be specified before -a.\n");
+                    exit(EXIT_FAILURE);
+                }
+            }
+            if (option.affinities == NULL){
+                option.affinities = malloc(sizeof(mb_affinity_t *) * option.multi);
+            }
+            if ((aff = mb_parse_affinity(NULL, optarg)) == NULL){
+                fprintf(stderr, "Invalid argument for -a: %s\n", optarg);
+                exit(EXIT_FAILURE);
+            }
+            aff->optarg = strdup(optarg);
+            option.affinities[aff->tid] = aff;
+        }
+            break;
+        case 't': // timeout
+            option.timeout = strtol(optarg, NULL, 10);
+            break;
+        case 'R': // random
+            option.rand = true;
+            option.seq = false;
+            break;
+        case 'S': // sequential
+            option.seq = true;
+            option.rand = false;
+            break;
+        case 'd': // direct IO
+            option.direct = true;
+            break;
+        case 'W': // write
+            option.write = true;
+            option.read = false;
+            break;
+        case 'b': // block size
+            option.blk_sz = strtol(optarg, NULL, 10);
+            break;
+        case 's': // start block
+            option.ofst_start = strtol(optarg, NULL, 10);
+            break;
+        case 'e': // end block
+            option.ofst_end = strtol(optarg, NULL, 10);
+            break;
+        case 'z': // misalignment
+            option.misalign = strtol(optarg, NULL, 10);
+            break;
+        case 'v': // verbose
+            option.verbose = true;
+            break;
+        default:
+            fprintf(stderr, "Unknown option '-%c'\n", optchar);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    if (optind >= argc) {
         fprintf(stderr, "Device or file is not specified.\n");
-        goto error;
-    } else {
-        option.path = argv[13];
+        exit(EXIT_FAILURE);
     }
-
-    if (strcmp("true", argv[1]) == 0){
-        option.noop = true;
-    } else {
-        option.noop = false;
-    }
-
-    option.multi = strtol(argv[2], NULL, 10);
-
-    // TODO :affinity
-
-    option.timeout = strtol(argv[4], NULL, 10);
-
-    if (strcmp("read", argv[5]) == 0) {
-        option.read = true;
-        option.write = false;
-    } else if (strcmp("write", argv[5]) == 0) {
-        option.read = false;
-        option.write = true;
-    }
-
-    if (strcmp("seq", argv[6]) == 0) {
-        option.seq = true;
-        option.rand = false;
-    } else if (strcmp("rand", argv[6]) == 0) {
-        option.seq = false;
-        option.rand = true;
-    }
-
-    if (strcmp("true", argv[7]) == 0){
-        option.direct = true;
-    } else {
-        option.direct = false;
-    }
-
-    option.blk_sz = strtol(argv[8], NULL, 10);
-
-    option.ofst_start = strtol(argv[9], NULL, 10);
-
-    option.ofst_end = strtol(argv[10], NULL, 10);
-
-    option.misalign = strtol(argv[11], NULL, 10);
-
-    if (strcmp("true", argv[12]) == 0){
-        option.verbose = true;
-    } else {
-        option.verbose = false;
-    }
-
+    option.path = argv[optind];
 
     // check device
 
@@ -352,36 +270,6 @@ parse_args(int argc, char **argv)
                 fprintf(stderr, "Cannot open %s with O_WRONLY\n", option.path);
                 goto error;
             }
-        }
-    }
-
-    if (option.assignment_str != NULL){
-        int i;
-        option.assigns = malloc(sizeof(thread_assignment_t *) * option.multi);
-        for (i = 0; i < option.multi; i++){
-            option.assigns[i] = NULL;
-        }
-        int code;
-        if ((code = parse_thread_assignment(option.multi,
-                                            option.assigns,
-                                            option.assignment_str)) != 0){
-            fprintf(stderr, "Invalid thread affinity assignment: %s\n",
-                       option.assignment_str);
-            switch(code){
-            case -1:
-
-                break;
-            case -2:
-
-                break;
-            case -3:
-
-                break;
-            case -4:
-                fprintf(stderr, "thread id >= # of thread.\n");
-                break;
-            }
-            goto error;
         }
     }
 
@@ -547,14 +435,14 @@ void *
 thread_handler(void *arg)
 {
     th_arg_t *th_arg = (th_arg_t *) arg;
-    thread_assignment_t *tass;
+    mb_affinity_t *aff;
 
-    if (option.assigns != NULL){
-        tass = option.assigns[th_arg->id];
-        if (tass != NULL){
+    if (option.affinities != NULL){
+        aff = option.affinities[th_arg->id];
+        if (aff != NULL){
             sched_setaffinity(syscall(SYS_gettid),
-                              NPROCESSOR,
-                              &tass->mask);
+                              sizeof(cpu_set_t),
+                              &aff->cpumask);
         }
     }
 
@@ -646,11 +534,13 @@ main(int argc, char **argv)
     }
     free(th_args);
 
-    if (option.assigns != NULL){
+    if (option.affinities != NULL){
         for(i = 0; i < option.multi; i++){
-            free(option.assigns[i]);
+            if (option.affinities[i] != NULL){
+                free(option.affinities[i]);
+            }
         }
-        free(option.assigns);
+        free(option.affinities);
     }
 
     return 0;
