@@ -1,5 +1,6 @@
 
 require 'tempfile'
+require 'jkr/blktrace'
 
 $real_fork = true
 
@@ -21,7 +22,8 @@ def iostress_analyze(plan)
 
   iostress_plot_all(results)
 #   iostress_plot_iotrace(results)
-#   iostress_plot_iostat(results)
+  iostress_plot_iostat(results)
+  iostress_plot_blktrace(results)
 end
 
 $iostress_xtics = 'set xtics ("2Ki" 2**10,"4Ki" 2**12, "8Ki" 2**13, "16Ki" 2**14, "32Ki" 2**15, "64Ki" 2**16, "128Ki" 2**17, "256Ki" 2**18, "1Mi" 2**20, "4Mi" 2**22, "16Mi" 2**24, "64Mi" 2**26)' + "\n"
@@ -42,7 +44,8 @@ def iostress_plot_all(results, prefix = "")
   results.group_by do |ret|
     [ret[:params][:mode],
      ret[:params][:blocksize],
-     ret[:params][:device]]
+     ret[:params][:device],
+     (ret[:params][:use_blktrace] ? "blktrace" : "no-blktrace")]
   end.sort_by do |group_param, group|
     group_param.join("-")
   end.each do |group_param, group|
@@ -62,7 +65,7 @@ def iostress_plot_all(results, prefix = "")
     end
     datafile.puts("\n\n")
     datafile.fsync
-    
+
     title = group_param.join("-")
     style_spec = "lt #{style_idx} lc #{style_idx}"
     transfer_entry = {
@@ -70,7 +73,7 @@ def iostress_plot_all(results, prefix = "")
       :datafile => datafile.path,
       :using => "1:4:5",
       :index => "#{data_idx}:#{data_idx}",
-      :with => "yerrorbars #{style_spec}"
+      :with => "yerrorlines #{style_spec}"
     }
     style_idx += 1
     style_spec = "lt #{style_idx} lc #{style_idx}"
@@ -79,21 +82,21 @@ def iostress_plot_all(results, prefix = "")
       :datafile => datafile.path,
       :using => "1:6:7",
       :index => "#{data_idx}:#{data_idx}",
-      :with => "yerrorbars #{style_spec}"
+      :with => "yerrorlines #{style_spec}"
     }
     response_time_entry = {
       :title => title,
       :datafile => datafile.path,
       :using => "1:($12*1000)",
       :index => "#{data_idx}:#{data_idx}",
-      :with => "points #{style_spec}"
+      :with => "linespoints #{style_spec}"
     }
     avgqu_entry = {
       :title => title,
       :datafile => datafile.path,
       :using => "1:10:11",
       :index => "#{data_idx}:#{data_idx}",
-      :with => "yerrorbars #{style_spec}"
+      :with => "yerrorlines #{style_spec}"
     }
 
     plot_data_transfer.push(transfer_entry)
@@ -104,7 +107,7 @@ def iostress_plot_all(results, prefix = "")
     style_idx += 1
 
     data_idx += 1
-    
+
     multi_min = group.map{|ret| ret[:params][:multiplicity]}.min
     multi_max = group.map{|ret| ret[:params][:multiplicity]}.max
     plot_scatter(:output => common_file_name("#{prefix}#{title}.eps"),
@@ -256,4 +259,81 @@ def iostress_plot_iotrace(results)
                                 }],
                  :other_options => "set key left top\n")
   end
+end
+
+def iostress_plot_blktrace(results)
+  results = results.select do |ret|
+    File.exists?(result_file_name(ret[:id], "blktrace"))
+  end
+
+  # results = results.first(2) # for test
+
+  rt_blktrace_series = []
+  rt_blktrace_item_labels = []
+  max_cpuid = 0
+
+  results.each_with_index do |ret,ret_idx|
+    blktrace = Blktrace.new(result_file_name(ret[:id], "blktrace/#{ret[:params][:device]}"))
+
+    max_cpuid = blktrace.map{|rec| rec[0]}.max
+    ioloc_datafiles = (0..(max_cpuid)).map do |cpuid|
+      File.open(result_file_name(ret[:id], "blktrace/ioloc#{cpuid}.tsv"), "w")
+    end
+    blktrace.each do |record|
+      cpu,seqno,time,action,rwbs,pos_sec,sz_sec,rt = *record
+      ioloc_datafiles[cpu].puts([time, pos_sec].map(&:to_s).join("\t"))
+    end
+    plot_data_ioloc = []
+    ioloc_datafiles.each_with_index do |datafile, idx|
+      plot_data_ioloc.push({
+                             :title => "cpu#{idx}",
+                             :index => "0:0",
+                             :datafile => datafile.path,
+                             :using => "1:2",
+                             :with => "points",
+                           })
+      datafile.close
+    end
+
+    plot_scatter(:output => result_file_name(ret[:id], "blktrace-ioloc.eps"),
+                 :gpfile => result_file_name(ret[:id], "blktrace-ioloc.gp"),
+                 :xlabel => "elapsed time [sec]",
+                 :ylabel => "location of IO issued [sector]",
+                 :xrange => "[0:0.01]",
+                 :yrange => "[0:]",
+                 :title => "IO requiests",
+                 :plot_data => plot_data_ioloc,
+                 :other_options => "set key outside\nunset rmargin\n"
+                 )
+
+    rt = blktrace.map{|record| record[7]}
+    rt_blktrace_series.push({
+                              :value => rt.avg * 10**6,
+                              :stdev => rt.sterr * 10**6
+                            })
+    rt_blktrace_item_labels.push(ret[:id])
+  end
+
+  plot_bar(:output => cname("response-time-blktrace.eps"),
+           :gpfile => cname("response-time-blktrace.gp"),
+           :datafile => cname("response-time-blktrace.tsv"),
+           :series_labels => ["response time"],
+           :item_labels => rt_blktrace_item_labels,
+           :title => "Response time measured by blktrace",
+           :yrange => "[0:]",
+           :ylabel => "response time [usec]",
+           :size => "1.0,1.0",
+           :data => [rt_blktrace_series],
+           :other_options => "#unset key\n")
+  plot_bar(:output => cname("response-time-blktrace-small.eps"),
+           :gpfile => cname("response-time-blktrace-small.gp"),
+           :datafile => cname("response-time-blktrace-small.tsv"),
+           :series_labels => ["response time"],
+           :item_labels => rt_blktrace_item_labels,
+           :title => "Response time measured by blktrace",
+           :yrange => "[0:100]",
+           :ylabel => "response time [usec]",
+           :size => "1.0,1.0",
+           :data => [rt_blktrace_series],
+           :other_options => "#unset key\n")
 end
