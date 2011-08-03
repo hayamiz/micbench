@@ -98,13 +98,16 @@ getsize(const char *path)
         int blk_num;
         int blk_sz;
         uint64_t dev_sz;
-        if(ioctl(fd, BLKGETSIZE, &blk_num) == -1){
-            goto finally;
-        }
-        if(ioctl(fd, BLKSSZGET, &blk_sz) == -1){
-            goto finally;
-        }
-        if (ioctl(fd, BLKGETSIZE64, &dev_sz)){
+        // if(ioctl(fd, BLKGETSIZE, &blk_num) == -1){
+        //     perror("ioctl(BLKGETSIZE) failed\n");
+        //     goto finally;
+        // }
+        // if(ioctl(fd, BLKSSZGET, &blk_sz) == -1){
+        //     perror("ioctl(BLKSSZGET) failed\n");
+        //     goto finally;
+        // }
+        if (ioctl(fd, BLKGETSIZE64, &dev_sz) == -1){
+            perror("ioctl(BLKGETSIZE64) failed\n");
             goto finally;
         }
 
