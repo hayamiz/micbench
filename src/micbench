@@ -179,9 +179,6 @@ class MemoryCommand < BaseCommand
     end
     @parser.on('-H', '--hugetlbfile PATH', "Use HugePages if specified. Give a path to file on hugetlbfs.") do |path|
       # TODO: more strict check
-      unless File.exists?(path)
-        parse_error.call("no such file: #{path}")
-      end
       @options[:hugetlbfile] = path
     end
     @parser.on('-z', '--hugepagesize SIZE', "Size of HugePage (default: 2MB)") do |size|
@@ -216,7 +213,6 @@ class MemoryCommand < BaseCommand
     if ! argv.empty?
       $stderr.puts("Following arguments are ignored: #{argv.join(' ')}")
     end
-
     real_command = File.join(File.dirname(__FILE__), "micbench-mem")
     real_command_str = [real_command,
                         "-m", @options[:multi],
