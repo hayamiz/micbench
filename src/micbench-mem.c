@@ -115,6 +115,7 @@ parse_args(int argc, char **argv)
 
             if ((aff = mb_parse_affinity(NULL, optarg)) == NULL){
                 fprintf(stderr, "Invalid argument for -a: %s\n", optarg);
+                exit(EXIT_FAILURE);
             }
             aff->optarg = strdup(optarg);
             option.affinities[aff->tid] = aff;
@@ -132,6 +133,9 @@ parse_args(int argc, char **argv)
         case 'v': // verbose
             option.verbose = true;
             break;
+        default:
+            fprintf(stderr, "Unknown option '-%c'\n", optchar);
+            exit(EXIT_FAILURE);
         }
     }
 }
