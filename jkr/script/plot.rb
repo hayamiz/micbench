@@ -1,5 +1,4 @@
 
-
 def gnuplot_label_escape(str)
   str.gsub(/_/, "\\_").gsub(/\{/, "\\{").gsub(/\}/, "\\}")
 end
@@ -226,7 +225,17 @@ def plot_bar(config)
                      :title => config[:series_labels][series_idx],
                      :using => "1:2:3",
                      :index => "#{data_idx}:#{data_idx}",
+                     :with => "with boxes fs solid 0.7",
                    })
+
+    if series.every?{|datum| datum[:stdev]}
+      plot_data.push({
+                       :title => nil,
+                       :using => "1:2:4",
+                       :index => "#{data_idx}:#{data_idx}",
+                       :with => "with yerrorbars lc 1 lt 1 pt 0",
+                     })
+    end
 
     datafile.puts("\n\n")
     data_idx += 1
@@ -246,7 +255,7 @@ def plot_bar(config)
            end
 
   plot_stmt = "plot " + plot_data.map do |plot_datum|
-    [:using, :title].each do |key|
+    [:using].each do |key|
       unless plot_datum[key]
         raise StandardError.new("key '#{key.to_s}' is required for a plot_datum of bar graph")
         return
@@ -256,8 +265,13 @@ def plot_bar(config)
     if plot_datum[:index]
       index = " index #{plot_datum[:index]} "
     end
+    if plot_datum[:title]
+      title = "title '#{gnuplot_label_escape(plot_datum[:title])}'"
+    else
+      title = "notitle"
+    end
     "'#{datafile.path}' #{index} using #{plot_datum[:using]}"+
-    " title '#{gnuplot_label_escape(plot_datum[:title])}' with boxes fs solid 0.7 "
+        " #{title} #{plot_datum[:with]} "
   end.join(", ")
 
   xpos = -1
