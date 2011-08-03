@@ -111,6 +111,7 @@ parse_args(int argc, char **argv)
             }
             if (option.affinities == NULL){
                 option.affinities = malloc(sizeof(mb_affinity_t *) * option.multi);
+                bzero(option.affinities, sizeof(mb_affinity_t *) * option.multi);
             }
 
             if ((aff = mb_parse_affinity(NULL, optarg)) == NULL){
@@ -377,6 +378,8 @@ main(int argc, char **argv)
         args[i].barrier = barrier;
         if (option.affinities != NULL) {
             args[i].affinity = option.affinities[i];
+        } else {
+            args[i].affinity = 0;
         }
     }
 
