@@ -12,19 +12,389 @@ $nodes = `numactl --hardware|grep available`.split[1].to_i
 
 class BaseCommand
   class << self
+    attr_accessor :description
+
     def commands
       @@commands
     end
 
     @@commands = {}
-    def command_name(name)
-      @@commands[name] = self
+    def command_name(name = nil, desc = nil)
+      if name.nil?
+        @command_name
+      else
+        @@commands[name] = self
+        @command_name = name
+        if ! desc.nil?
+          @description = desc
+        end
+      end
     end
+
+    def dispatch(argv)
+      if argv.empty? || argv.first =~ /\A(-h|--help)\Z/
+        cmd_class = HelpCommand
+      else
+        cmd = argv.shift
+        unless @@commands[cmd]
+          $stderr.puts("No such command: #{cmd}")
+          exit(false)
+        end
+        cmd_class = @@commands[cmd]
+      end
+      cmd = cmd_class.new()
+      cmd.invoke(argv)
+    end
+  end
+
+  def initialize()
+    @options = {}
+    @parser = OptionParser.new
+    @parser.banner = "Usage: #{File.basename($0, '.*')} #{self.command_name} [options]"
+    self.init_option_parser()
+  end
+
+  def command_name
+    self.class.command_name
+  end
+
+  def print_help
+    puts @parser.help
+  end
+
+  def init_option_parser()
+    raise NotImplementedError.new("#{self.class}##{__method__} is not implemented.")
+  end
+
+  def check_option()
+    raise NotImplementedError.new("#{self.class}##{__method__} is not implemented.")
+  end
+
+  def invoke(argv)
+    argv = @parser.parse(argv)
+    self.check_option()
+    self.do_cmd(argv)
+  end
+
+  def do_cmd(argv)
+    raise NotImplementedError.new("#{self.class}##{__method__} is not implemented.")
   end
 end
 
-class MemLatency < BaseCommand
-  command_name "memlatency"
+class HelpCommand < BaseCommand
+  command_name "help", "'help \x1b[4mcommand\x1b[0m' explains about \x1b[4mcommand\x1b[0m"
+
+  def init_option_parser()
+    cmd_name_maxlen = 0
+    cmd_list = BaseCommand.commands.values.sort_by do |cmd_class|
+      cmd_name_maxlen = [cmd_name_maxlen, cmd_class.command_name.size].max
+      cmd_class.command_name
+    end.map do |cmd_class|
+      sprintf("  %#{cmd_name_maxlen}s : %s",
+              cmd_class.command_name,
+              cmd_class.description || "no description")
+    end.join("\n")
+    @parser.banner =  <<EOS
+Usage: #{File.basename($0, '.*')} \x1b[4mcommand\x1b[0m [options]
+
+available commands:
+#{cmd_list}
+
+EOS
+  end
+
+  def check_option()
+  end
+
+  def do_cmd(argv)
+    if ! argv.empty? && BaseCommand.commands[argv[0]]
+      BaseCommand.commands[argv[0]].new().print_help
+    else
+      puts @parser.help
+    end
+    exit(true)
+  end
+end
+
+class MemoryCommand < BaseCommand
+  command_name "mem", "memory latency and bandwidth benchmark"
+
+  def init_option_parser()
+    @options[:multi] = 1
+    @options[:timeout] = 10
+    @options[:mode] = :seq
+    @options[:local] = false
+    @options[:affinity] = {}
+    @options[:size] = 2 ** 20
+    @options[:hugetlbfile] = nil
+    @options[:hugepagesize] = 2 * 2**20
+    @options[:verbose] = false
+    @options[:debug] = false
+
+    parse_error = lambda do |*msg|
+      if msg.size > 0
+        msg.each do |m|
+          $stderr.puts("#{$0}: #{m}")
+        end
+      end
+      puts @parser.help
+      exit(false)
+    end
+
+    @parser.on('-h', '--help', "Show help") do
+      puts @parser.help
+      exit(true)
+    end
+    @parser.on('-m', '--multi NUM', Integer,
+              "Multiplicity of memory access (default: #{@options[:multi]})") do |num|
+      @options[:multi] = num
+    end
+    @parser.on('-t', '--timeout NUM',
+              "Running time of memory access test (in sec) (default: #{@options[:timeout]}sec)") do |num|
+      if num =~ /\A\d+\Z/
+        @options[:timeout] = num.to_i
+      else
+        parse_error.call("--timeout requires positive integer.")
+      end
+    end
+    @parser.on('-S', '--seq',
+              "Sequential memory access mode (default mode)") do
+      @options[:mode] = :seq
+    end
+    @parser.on('-R', '--rand',
+              "Random memory access mode (default: sequential access mode)") do
+      @options[:mode] = :rand
+    end
+    @parser.on('-L', '--local',
+              "Allocate separated memory region for each thread (default: sharing one region)") do
+      @options[:local] = true
+    end
+    @parser.on('-a', '--affinity AFFINITY', "CPU and memory utilization policy") do |affinity|
+      @options[:affinity] = @options[:affinity].merge(parse_affinity(affinity))
+    end
+    @parser.on('-s', '--size SIZE', "Size of memory region (default: 1MB)") do |size|
+      unless @options[:size] = parse_size(size)
+        parse_error.call("invalid argument for --size: #{size}")
+      end
+    end
+    @parser.on('-H', '--hugetlbfile PATH', "Use HugePages if specified. Give a path to file on hugetlbfs.") do |path|
+      # TODO: more strict check
+      unless File.exists?(path)
+        parse_error.call("no such file: #{path}")
+      end
+      @options[:hugetlbfile] = path
+    end
+    @parser.on('-z', '--hugepagesize SIZE', "Size of HugePage (default: 2MB)") do |size|
+      # TODO: more strict check
+      unless @options[:hugepagesize] = parse_size(size)
+        parse_error.call("invalid argument for --hugepagesize: #{size}")
+      end
+    end
+    @parser.on('-v', '--verbose') do
+      @options[:verbose] = true
+    end
+    @parser.on('--debug') do
+      @options[:debug] = true
+    end
+  end
+
+  def check_option()
+    @options[:affinity] = @options[:affinity].select do |tid,entry|
+      tid < @options[:multi]
+    end.map do |tid, entry|
+      cpuset = entry[0]
+      mnodeset = entry[1]
+      max_cpuid = cpuset.max
+      max_mnodeid = mnodeset.max
+      cpu_bitmap = (0..[max_cpuid, $logicores - 1].min).map{|cpuid| cpuset.include?(cpuid) ? "1" : "0"}.join("")
+      mnode_bitmap = (0..[max_mnodeid, $nodes - 1].min).map{|nodeid| mnodeset.include?(nodeid) ? "1" : "0"}.join("")
+      "#{tid}:#{cpu_bitmap}:#{mnode_bitmap}"
+    end
+  end
+
+  def do_cmd(argv)
+    if ! argv.empty?
+      $stderr.puts("Following arguments are ignored: #{argv.join(' ')}")
+    end
+
+    real_command = File.join(File.dirname(__FILE__), "micbench-mem")
+    real_command_str = [real_command,
+                        "-m", @options[:multi],
+                        "-t", @options[:timeout],
+                        (@options[:mode] == :rand ? "-R" : "-S"),
+                        (@options[:local] ? "-L" : []),
+                        "-s", @options[:size],
+                        (@options[:hugetlbfile] ? ["-H", @options[:hugetlbfile]] : []),
+                        "-z", @options[:hugepagesize],
+                        (@options[:verbose] ? "-v" : []),
+                        @options[:affinity].map{|aff| ["-a", aff]}].flatten.join(" ")
+
+    if ENV['MB_DEBUG'] || @options[:debug]
+      puts real_command_str
+    end
+    if ENV['MB_LEAKCHECK']
+      real_command_str = "valgrind --leak-check=full " + real_command_str
+    end
+    exec(real_command_str)
+  end
+end
+
+class IoCommand < BaseCommand
+  command_name "io", "IO benchmark on block devices and files"
+
+  def init_option_parser()
+    @options[:noop] = false
+    @options[:multi] = 1
+    @options[:affinity] = {}
+    @options[:timeout] = 60
+    @options[:mode] = :read
+    @options[:pattern] = :seq
+    @options[:direct] = false
+    @options[:blocksize] = 16 * 1024
+    @options[:offset_start] = 0
+    @options[:offset_end] = 0
+    @options[:misalign] = 0
+    @options[:verbose] = false
+    @options[:debug] = false
+
+    @parser.banner = "Usage: #{File.basename($0, '.*')} #{self.command_name} [options] device_or_file"
+
+    parse_error = lambda do |*msg|
+      if msg.size > 0
+        msg.each do |m|
+          $stderr.puts("#{$0}: #{m}")
+        end
+      end
+      puts @parser.help
+      exit(false)
+    end
+
+    @parser.on('-N', '--noop',
+              "Dry-run if this option is specified.") do
+      @options[:noop] = true
+    end
+    @parser.on('-m', '--multi NUM', Integer,
+              "The number of IO threads (default: 1)") do |num|
+      @options[:multi] = num
+    end
+    @parser.on('-a', '--affinity AFFINITY',
+              "CPU and memory affinity setting") do |affinity|
+      @options[:affinity] = @options[:affinity].merge(parse_affinity(affinity))
+    end
+    @parser.on('-t', '--timeout NUM',
+              "Running time of IO test (in sec) (default: 60sec)") do |num|
+      if num =~ /\A\d+\Z/
+        @options[:timeout] = num.to_i
+      else
+        parse_error.call("--timeout requires positive integer.")
+      end
+    end
+    @parser.on('-W', '--write',
+              "Write operation (default: read operation)") do
+      @options[:mode] = :write
+    end
+    @parser.on('-S', '--seq',
+              "Sequential access mode (default mode)") do
+      @options[:pattern] = :seq
+    end
+    @parser.on('-R', '--rand',
+              "Random access mode (default: sequential access mode)") do
+      @options[:pattern] = :rand
+    end
+    @parser.on('-d', '--direct',
+              "Use O_DIRECT (default: no). If this flag is specified, block size must be multiples of block size of devices.") do
+      @options[:direct] = true
+    end
+    @parser.on('-b', '--blocksize SIZE',
+              "Size of IO block (default: 16k)") do |size|
+      unless @options[:blocksize] = parse_size(size)
+        parse_error.call("invalid argument for --size: #{size}")
+      end
+    end
+    @parser.on('-s', '--offset-start OFFSET',
+              "Offset (in blocks) to start with (default: 0)") do |offset|
+      if offset =~ /\A\d+\Z/
+        @options[:offset_start] = offset.to_i
+      else
+        parse_error.call("--offset-start requires 0 or positive integer.")
+      end
+    end
+    @parser.on('-e', '--offset-end OFFSET',
+              "Offset (in blocks) to end with (default: the size of device)") do |offset|
+      if offset =~ /\A\d+\Z/
+        @options[:offset_end] = offset.to_i
+      else
+        parse_error.call("--offset-end requires 0 or positive integer.")
+      end
+    end
+    @parser.on('-z', '--misalign OFFSET',
+              "Misalignment from current position (in byte) (default: 0)") do |offset|
+      if offset =~ /\A\d+\Z/
+        @options[:misalign] = offset.to_i
+      else
+        parse_error.call("--misalign requires 0 or positive integer.")
+      end
+    end
+    @parser.on('-v', '--verbose') do
+      @options[:verbose] = true
+    end
+    @parser.on('--debug') do
+      @options[:debug] = true
+    end
+  end
+
+  def check_option
+    @options[:affinity] = @options[:affinity].select do |tid,entry|
+      tid < @options[:multi]
+    end.map do |tid, entry|
+      cpuset = entry[0]
+      mnodeset = entry[1]
+      p mnodeset
+      max_cpuid = cpuset.max
+      max_mnodeid = mnodeset.max
+      cpu_bitmap = (0..[max_cpuid, $logicores - 1].min).map{|cpuid| cpuset.include?(cpuid) ? "1" : "0"}.join("")
+      mnode_bitmap = (0..[max_mnodeid, $nodes - 1].min).map{|nodeid| mnodeset.include?(nodeid) ? "1" : "0"}.join("")
+      "#{tid}:#{cpu_bitmap}:#{mnode_bitmap}"
+    end
+  end
+
+  def do_cmd(argv)
+    if argv.empty?
+      $stderr.puts("device or file must be specified.")
+      puts @parser.help
+      exit(false)
+    else
+      device_or_file = argv.shift
+    end
+
+    if ! argv.empty?
+      $stderr.puts("Following arguments are ignored: #{argv.join(' ')}")
+    end
+
+    real_command = File.join(File.dirname(__FILE__), "micbench-io")
+    real_command_str = [real_command,
+                        (@options[:noop] ? "-N" : []),
+                        "-m", @options[:multi],
+                        @options[:affinity].map{|aff| ["-a", aff]},
+                        "-t", @options[:timeout],
+                        (@options[:pattern] == :rand ? "-R" : "-S"),
+                        (@options[:direct] ? "-d" : []),
+                        (@options[:mode] == :write ? "-W" : []),
+                        "-b", @options[:blocksize],
+                        "-s", @options[:offset_start],
+                        "-e", @options[:offset_end],
+                        "-z", @options[:misalign],
+                        (@options[:verbose] ? "-v" : []),
+                        device_or_file].flatten.join(" ")
+
+    if ENV['MB_DEBUG'] || @options[:debug]
+      puts real_command_str
+    end
+    if ENV['MB_LEAKCHECK']
+      real_command_str = "valgrind --leak-check=full " + real_command_str
+    end
+    exec(real_command_str)
+  end
 end
 
 def print_usage()
@@ -162,329 +532,8 @@ def parse_affinity(aff_str)
   thread_masks
 end
 
-def io_main(argv)
-  def io_parse_args(argv)
-    opt = Hash.new
-    parser = OptionParser.new
-
-    parse_error = lambda do |*msg|
-      if msg.size > 0
-        msg.each do |m|
-          $stderr.puts("#{$0}: #{m}")
-        end
-      end
-      puts parser.help
-      exit(false)
-    end
-
-    # argv[1]
-    opt[:noop] = false
-    parser.on('-n', '--noop',
-              "Dry-run if this option is specified.") do
-      opt[:noop] = true
-    end
-
-    # argv[2]
-    opt[:multi] = 1
-    parser.on('-m', '--multi NUM', Integer,
-              "The number of IO threads (default: 1)") do |num|
-      opt[:multi] = num
-    end
-
-    # argv[3]
-    opt[:affinity] = false
-    parser.on('-a', '--affinity AFFINITY',
-              "CPU and memory affinity setting") do |affinity|
-      opt[:affinity] = parse_affinity(affinity)
-    end
-
-    # argv[4]
-    opt[:timeout] = 60
-    parser.on('-t', '--timeout NUM',
-              "Running time of IO test (in sec) (default: 60sec)") do |num|
-      if num =~ /\A\d+\Z/
-        opt[:timeout] = num.to_i
-      else
-        parse_error.call("--timeout requires positive integer.")
-      end
-    end
-
-    # argv[5]
-    opt[:mode] = :read
-    parser.on('-w', '--write',
-              "Write operation (default: read operation)") do
-      opt[:mode] = :write
-    end
-
-    # argv[6]
-    opt[:pattern] = :seq
-    seq_specified = false
-    rand_specified = false
-    parser.on('-S', '--seq',
-              "Sequential access mode (default mode)") do
-      seq_specified = true
-      opt[:pattern] = :seq
-    end
-    parser.on('-R', '--rand',
-              "Random access mode (default: sequential access mode)") do
-      seq_specified = true
-      opt[:pattern] = :rand
-    end
-
-    # argv[7]
-    opt[:direct] = false
-    parser.on('-d', '--direct',
-              "Use O_DIRECT (default: no). If this flag is specified, block size must be multiples of block size of devices.") do
-      opt[:direct] = true
-    end
-
-    # argv[8]
-    opt[:blocksize] = 16 * 1024
-    parser.on('-b', '--blocksize SIZE',
-              "Size of IO block (default: 16k)") do |size|
-      unless opt[:blocksize] = parse_size(size)
-        parse_error.call("invalid argument for --size: #{size}")
-      end
-    end
-
-    # argv[9]
-    opt[:offset_start] = 0
-    parser.on('-s', '--offset-start OFFSET',
-              "Offset (in blocks) to start with (default: 0)") do |offset|
-      if offset =~ /\A\d+\Z/
-        opt[:offset_start] = offset.to_i
-      else
-        parse_error.call("--offset-start requires 0 or positive integer.")
-      end
-    end
-
-    # argv[10]
-    opt[:offset_end] = 0
-    parser.on('-s', '--offset-end OFFSET',
-              "Offset (in blocks) to end with (default: the size of device)") do |offset|
-      if offset =~ /\A\d+\Z/
-        opt[:offset_end] = offset.to_i
-      else
-        parse_error.call("--offset-end requires 0 or positive integer.")
-      end
-    end
-
-    # argv[11]
-    opt[:misalign] = 0
-    parser.on('-M', '--misalign OFFSET',
-              "Misalignment from current position (in byte) (default: 0)") do |offset|
-      if offset =~ /\A\d+\Z/
-        opt[:misalign] = offset.to_i
-      else
-        parse_error.call("--misalign requires 0 or positive integer.")
-      end
-    end
-
-    # argv[12]
-    opt[:verbose] = false
-    parser.on('-v', '--verbose') do
-      opt[:verbose] = true
-    end
-
-    parser.parse!(argv)
-
-    if seq_specified && rand_specified
-      parse_error.call("--seq and --rand cannot be specified at a time")
-      parse_error.call
-    end
-
-    # TODO: parse affinity
-
-    opt
-  end
-
-  opt = io_parse_args(argv)
-
-  command = File.join(File.dirname(__FILE__), "micbench-io")
-  command_str = [command,
-                 opt[:noop],
-                 opt[:multi],
-                 opt[:affinity],
-                 opt[:timeout],
-                 opt[:mode],
-                 opt[:pattern],
-                 opt[:direct],
-                 opt[:blocksize],
-                 opt[:offset_start],
-                 opt[:offset_end],
-                 opt[:misalign],
-                 opt[:verbose]].join(" ")
-
-  if ENV['MB_DEBUG']
-    puts command_str
-  end
-  if ENV['MB_LEAKCHECK']
-    command_str = "valgrind --leak-check=full " + command_str
-  end
-  exec(command_str)
-end
-
-def mem_main(argv)
-  def mem_parse_args(argv)
-    opt = Hash.new
-    parser = OptionParser.new
-
-    parse_error = lambda do |*msg|
-      if msg.size > 0
-        msg.each do |m|
-          $stderr.puts("#{$0}: #{m}")
-        end
-      end
-      puts parser.help
-      exit(false)
-    end
-
-    # shifted argv[0]
-    opt[:multi] = 1
-    parser.on('-m', '--multi NUM', Integer,
-              "Multiplicity of memory access (default: #{opt[:multi]})") do |num|
-      opt[:multi] = num
-    end
-
-    # shifted argv[1]
-    opt[:timeout] = 10
-    parser.on('-t', '--timeout NUM',
-              "Running time of memory access test (in sec) (default: #{opt[:timeout]}sec)") do |num|
-      if num =~ /\A\d+\Z/
-        opt[:timeout] = num.to_i
-      else
-        parse_error.call("--timeout requires positive integer.")
-      end
-    end
-
-    # shifted argv[2]
-    opt[:mode] = :seq
-    seq_specified = false
-    rand_specified = false
-    parser.on('-S', '--seq',
-              "Sequential memory access mode (default mode)") do
-      seq_specified = true
-      opt[:mode] = :seq
-    end
-    parser.on('-R', '--rand',
-              "Random memory access mode (default: sequential access mode)") do
-      seq_specified = true
-      opt[:mode] = :rand
-    end
-
-    # shifted argv[3]
-    opt[:local] = false
-    parser.on('-L', '--local',
-              "Allocate separated memory region for each thread (default: sharing one region)") do
-      opt[:local] = true
-    end
-
-    # beginning of argv
-    opt[:affinity] = []
-    parser.on('-a', '--affinity AFFINITY',
-              "CPU and memory utilization policy") do |affinity|
-      opt[:affinity] = parse_affinity(affinity)
-    end
-
-    # shifted argv[4]
-    opt[:size] = 2 ** 20
-    parser.on('-s', '--size SIZE',
-              "Size of memory region (default: 1MB)") do |size|
-      unless opt[:size] = parse_size(size)
-        parse_error.call("invalid argument for --size: #{size}")
-      end
-    end
-
-    # shifted argv[5]
-    opt[:hugetlbfile] = nil
-    parser.on('-H', '--hugetlbfile PATH',
-              "Use HugePages if specified. Give a path to file on hugetlbfs.") do |path|
-      # TODO: more strict check
-      unless File.exists?(path)
-        parse_error.call("no such file: #{path}")
-      end
-      opt[:hugetlbfile] = path
-    end
-
-    # shifted argv[6]
-    opt[:hugepagesize] = 2 * 2**20
-    parser.on('-z', '--hugepagesize SIZE',
-              "Size of HugePage (default: 2MB)") do |size|
-      # TODO: more strict check
-      unless opt[:hugepagesize] = parse_size(size)
-        parse_error.call("invalid argument for --hugepagesize: #{size}")
-      end
-    end
-
-    # shifted argv[7]
-    opt[:verbose] = false
-    parser.on('-v', '--verbose') do
-      opt[:verbose] = true
-    end
-
-    opt[:debug] = false
-    parser.on('--debug') do
-      opt[:debug] = true
-    end
-
-    parser.parse!(argv)
-
-    if seq_specified && rand_specified
-      parse_error.call("--seq and --rand cannot be specified at a time")
-      parse_error.call
-    end
-
-    opt[:affinity] = opt[:affinity].select do |tid,entry|
-      tid < opt[:multi]
-    end.map do |tid, entry|
-      cpuset = entry[0]
-      mnodeset = entry[1]
-      max_cpuid = cpuset.max
-      max_mnodeid = mnodeset.max
-      cpu_bitmap = (0..[max_cpuid, $logicores - 1].min).map{|cpuid| cpuset.include?(cpuid) ? "1" : "0"}.join("")
-      mnode_bitmap = (0..[max_mnodeid, $nodes - 1].min).map{|nodeid| mnodeset.include?(nodeid) ? "1" : "0"}.join("")
-      ['-a', "#{tid}:#{cpu_bitmap}:#{mnode_bitmap}"]
-    end.flatten
-
-    opt
-  end
-
-  opt = mem_parse_args(argv)
-
-  command = File.join(File.dirname(__FILE__), "micbench-mem")
-  command_str = [command,
-                 "-m", opt[:multi],
-                 "-t", opt[:timeout],
-                 (opt[:mode] == :rand ? "-R" : "-S"),
-                 (opt[:local] ? "-L" : []),
-                 "-s", opt[:size],
-                 (opt[:hugetlbfile] ? ["-H", opt[:hugetlbfile]] : []),
-                 "-z", opt[:hugepagesize],
-                 (opt[:verbose] ? "-v" : []),
-                 opt[:affinity]].flatten.join(" ")
-
-  if ENV['MB_DEBUG']
-    puts command_str
-  end
-  if ENV['MB_LEAKCHECK']
-    command_str = "valgrind --leak-check=full " + command_str
-  end
-  exec(command_str)
-end
-
 def main(argv)
-  if argv.size > 0
-    command = argv.shift
-    case command
-    when "mem"
-      mem_main(argv)
-    else
-      puts "#{$0}: Unknown command '#{command}'"
-    end
-  else
-    print_usage()
-    exit(false)
-  end
+  BaseCommand.dispatch(argv)
 end
 
 if __FILE__ == $0
