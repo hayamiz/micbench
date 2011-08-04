@@ -95,8 +95,6 @@ getsize(const char *path)
     }
 
     if (S_ISBLK(statbuf.st_mode)){
-        int blk_num;
-        int blk_sz;
         uint64_t dev_sz;
         // if(ioctl(fd, BLKGETSIZE, &blk_num) == -1){
         //     perror("ioctl(BLKGETSIZE) failed\n");
