@@ -149,6 +149,7 @@ thread_handler(void *arg)
 
     if (th_arg->affinity != NULL){
         tid = syscall(SYS_gettid);
+        fprintf(stderr, "setaffinity %d %d %lu\n", th_arg->id, tid, th_arg->affinity->cpumask.__bits[0]);
         sched_setaffinity(tid, sizeof(cpu_set_t), &th_arg->affinity->cpumask);
     }
 
@@ -220,13 +221,13 @@ do_memory_stress_seq(perf_counter_t* pc,
                 ptr = working_area;
                 ptr_end = working_area + (working_size / sizeof(long));
                 for(;ptr < ptr_end;){
-                    // scan & increment 1KB segment
-#include "micbench-mem-inner-short.c"
+                    // scan & increment consecutive segment
+#include "micbench-mem-inner-64.c"
                 }
             }
             t1 = read_tsc();
             pc->clk += t1 - t0;
-            pc->ops += MEM_INNER_LOOP_SEQ_SHORT_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQ_SHORT_REGION_SIZE) * iter_count;
+            pc->ops += MEM_INNER_LOOP_SEQ_64_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQ_64_REGION_SIZE) * iter_count;
         }
     } else {
         while((t = mb_elapsed_time_from(&start_tv)) < option.timeout){
@@ -235,7 +236,7 @@ do_memory_stress_seq(perf_counter_t* pc,
                 ptr = working_area;
                 ptr_end = working_area + (working_size / sizeof(long));
                 for(;ptr < ptr_end;){
-                    // scan & increment 1KB segment
+                    // scan & increment consecutive segment
 #include "micbench-mem-inner.c"
                 }
             }
@@ -244,7 +245,7 @@ do_memory_stress_seq(perf_counter_t* pc,
             pc->ops += MEM_INNER_LOOP_SEQ_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQ_REGION_SIZE) * iter_count;
         }
     }
-    if(option.verbose == true) printf("loop end: t=%lf\n", t);
+    if(option.verbose == true) fprintf(stderr, "loop end: t=%lf\n", t);
     pc->wallclocktime = t;
 }
 
@@ -379,7 +380,7 @@ main(int argc, char **argv)
         if (option.affinities != NULL) {
             args[i].affinity = option.affinities[i];
         } else {
-            args[i].affinity = 0;
+            args[i].affinity = NULL;
         }
     }
 

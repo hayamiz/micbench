@@ -10,7 +10,7 @@ def mem_bandwidth_analyze(plan)
   results = get_results
 
   results = results.map do |ret|
-    ret[:label] = "#{ret[:params][:pattern]}-#{h(ret[:params][:memsize])}-#{ret[:params][:assign]}"
+    ret[:label] = "#{ret[:params][:pattern]}-#{h(ret[:params][:memsize])}-#{ret[:params][:affinity]}"
     ret
   end
 
@@ -101,7 +101,7 @@ def plot_size_rt(results)
   serieses = Hash.new{Array.new}
 
   results.each do |ret|
-    serieses[[ret[:pattern], ret[:params][:assign]]] += [ret]
+    serieses[[ret[:pattern], ret[:params][:affinity]]] += [ret]
   end
 
   datafile = File.open(common_file_name("bandwidth.tsv"), "w")

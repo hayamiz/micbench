@@ -12,7 +12,7 @@ def system_(*args)
 end
 
 def_parameters do
-  parameter :command => "./src/micbench-mem"
+  parameter :command => "./src/micbench mem"
 
   sizes = (2..22).map{|x| 2**(10+x)}
   sizes += [(32 + 4)*1024]
@@ -29,6 +29,9 @@ def_parameters do
 
   variable :memsize => sizes
 
+  parameter :use_hugepages => true
+  parameter :hugetlbfile => "/mnt/hugetlbfile/mem-1core-band"
+
   # parameter :pattern => :sequential
   # parameter :pattern => :random
   parameter :pattern => :sequential
@@ -36,7 +39,7 @@ def_parameters do
   parameter :multi => 1
 
   memnodes = `numactl --show|grep membind|sed -e 's/^membind: //g'`.strip.split.map(&:to_i)
-  variable :assign => memnodes.map{|mnode| "0:0:#{mnode}"}
+  variable :affinity => memnodes.map{|mnode| "0:c0:#{mnode}"}
 
   parameter :sys_monitor_interval => 1
   parameter :duration => 10
@@ -59,8 +62,12 @@ def_prep do |plan|
 
   # warming up
   puts "Warming up system"
-  system_(plan.params[:command], "--rand", "--size", "24M", "--multi", SysUtils.num_cores.to_s,
-          "--timeout", "5", "--local", ">/dev/null")
+  system_([plan.params[:command],
+           "--rand",
+           "--size", "24M",
+           "--multi", SysUtils.num_cores.to_s,
+           "--timeout", "5",
+           "--local", ">/dev/null"].join(" "))
 end
 
 def_routine do |plan, params|
@@ -122,8 +129,11 @@ def_routine do |plan, params|
           if params[:pattern] == :random
             args << "--rand"
           end
-          if params[:assign]
-            args += ["--assign", params[:assign]]
+          if params[:use_hugepages]
+            args << ["--hugetlbfile", params[:hugetlbfile]]
+          end
+          if params[:affinity]
+            args += ["--affinity", params[:affinity]]
           end
           system_(args.join(" ") + " 1> #{result_file_name('micbench-mem.txt')} 2> #{result_file_name('micbench-mem-stderr.txt')}")
         else
