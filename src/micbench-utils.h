@@ -48,6 +48,7 @@ void           mb_free_affinity(mb_affinity_t *affinity);
 mb_affinity_t *mb_parse_affinity(mb_affinity_t *ret, const char *optarg);
 
 double mb_elapsed_time_from(struct timeval *tv);
+long   mb_elapsed_usec_from(struct timeval *tv);
 
 unsigned long mb_rand_range_ulong (unsigned long from, unsigned long to);
 long          mb_rand_range_long  (long from, long to);

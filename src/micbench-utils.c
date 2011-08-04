@@ -84,7 +84,18 @@ mb_elapsed_time_from(struct timeval *tv)
         perror("gettimeofday(3) failed ");
         fprintf(stderr, " @%s:%d\n", __FILE__, __LINE__);
     }
-    return TV2DOUBLE(now) - TVPTR2DOUBLE(tv);
+    return (TV2LONG(now) - TVPTR2LONG(tv)) / 1.0e6;
+}
+
+long
+mb_elapsed_usec_from(struct timeval *tv)
+{
+    struct timeval now;
+    if (0 != gettimeofday(&now, NULL)){
+        perror("gettimeofday(3) failed ");
+        fprintf(stderr, " @%s:%d\n", __FILE__, __LINE__);
+    }
+    return TV2LONG(now) - TVPTR2LONG(tv);
 }
 
 unsigned long
