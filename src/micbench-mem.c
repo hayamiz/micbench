@@ -212,10 +212,12 @@ do_memory_stress_seq(perf_counter_t* pc,
     }
 
     double t = 0;
+    register long timeout = option.timeout * 1000000L;
+
     pthread_barrier_wait(barrier);
     GETTIMEOFDAY(&start_tv);
     if (option.size < 1024) {
-        while((t = mb_elapsed_time_from(&start_tv)) < option.timeout){
+        while((t = mb_elapsed_usec_from(&start_tv)) < timeout){
             t0 = read_tsc();
             for(i = 0;i < iter_count;i++){
                 ptr = working_area;
@@ -230,7 +232,7 @@ do_memory_stress_seq(perf_counter_t* pc,
             pc->ops += MEM_INNER_LOOP_SEQ_64_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQ_64_REGION_SIZE) * iter_count;
         }
     } else {
-        while((t = mb_elapsed_time_from(&start_tv)) < option.timeout){
+        while((t = mb_elapsed_usec_from(&start_tv)) < timeout){
             t0 = read_tsc();
             for(i = 0;i < iter_count;i++){
                 ptr = working_area;
@@ -246,7 +248,7 @@ do_memory_stress_seq(perf_counter_t* pc,
         }
     }
     if(option.verbose == true) fprintf(stderr, "loop end: t=%lf\n", t);
-    pc->wallclocktime = t;
+    pc->wallclocktime = t / 1e6;
 }
 
 void
@@ -406,7 +408,6 @@ main(int argc, char **argv)
         for(i = 0;i < option.multi;i++){
             if (option.hugetlbfile != NULL) {
                 args[i].fd = open(option.hugetlbfile, O_CREAT | O_RDWR, 0755);
-                fprintf(stderr, "mmap_size: %ld\n", mmap_size);
                 if (args[i].fd == -1){
                     perror("Failed to open hugetlbfs.\n");
                     printf("hugetlbfile: %s\n", option.hugetlbfile);
