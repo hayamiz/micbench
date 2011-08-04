@@ -109,7 +109,7 @@ def generate_seq_short(out, region_size = 64)
 
   region_size # bytes
   stride_size = 16 # 128bit-wide SSE register
-  num_register = 16 # xmm* SSE registers
+  num_register = [region_size / stride_size, 16].min # xmm* SSE registers
   out.puts <<EOS
 #define	MEM_INNER_LOOP_SEQ_#{region_size}_NUM_OPS	#{(region_size / stride_size) * iter_count}
 #define	MEM_INNER_LOOP_SEQ_#{region_size}_REGION_SIZE	#{(region_size)}
@@ -128,7 +128,7 @@ EOS
     end
   end
 
-  destructed_regs = (0..15).map{|i| sprintf('"%%xmm%d"', i)}.join(", ")
+  destructed_regs = (0..(num_register - 1)).map{|i| sprintf('"%%xmm%d"', i)}.join(", ")
   out.puts <<EOS
 "addq	$#{region_size}, %0\\n"
 : "=a" (ptr)
