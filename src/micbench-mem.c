@@ -149,7 +149,6 @@ thread_handler(void *arg)
 
     if (th_arg->affinity != NULL){
         tid = syscall(SYS_gettid);
-        fprintf(stderr, "setaffinity %d %d %lu\n", th_arg->id, tid, th_arg->affinity->cpumask.__bits[0]);
         sched_setaffinity(tid, sizeof(cpu_set_t), &th_arg->affinity->cpumask);
     }
 
