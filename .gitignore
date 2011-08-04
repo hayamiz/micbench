@@ -17,8 +17,7 @@
 /jkr/result/*
 /src/micbench-io
 /src/micbench-mem
-/src/micbench-mem.s
-/src/micbench-mem-inner-rand.c
-/src/micbench-mem-inner.c
-/src/__micbench-*
+/src/__micbench*
+/src/micbench-mem-inner*
+/src/*.s
 /src/micbench-mem-inner-short.c
