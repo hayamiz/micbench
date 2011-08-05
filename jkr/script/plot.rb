@@ -23,6 +23,7 @@ def plot_distribution(config)
   xrange_max_local = 0
   histset = []
   dataset.each do |tx_type,data|
+    next if data.empty?
     hist = Array.new
     avg = data.inject(&:+) / data.size.to_f
     n90th_idx = (data.size * 0.9).to_i
@@ -81,24 +82,6 @@ def plot_distribution(config)
   end
 
   datafile.fsync
-#   if config[:datafile]
-#     File.open(config[:datafile], "w"){|f|
-#       f.puts(histset.map{|histdata|
-#                [histdata[:tx_type], "", ""].join("\t")
-#              }.join("\t"))
-#       f.puts(histset.map{|histdata|
-#                ["response time[sec]", "hist", "normalized hist"].join("\t")
-#              }.join("\t"))
-#       stepnum.times{|i|
-#         f.puts(histset.map{|histdata|
-#                  x = (i + 0.5) * histdata[:step]
-#                  y = histdata[:hist][i].to_f
-#                  max = histdata[:max]
-#                  sprintf("%f\t%f\t%f", x, y, y / max)
-#                }.join("\t"))
-#       }
-#     }
-#   end
   plot_stmt = plot_stmt.flatten.join(", ")
   plot_stmt = "plot #{plot_stmt}"
 
