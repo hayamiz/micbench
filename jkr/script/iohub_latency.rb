@@ -1,5 +1,6 @@
 
 require 'tempfile'
+require 'jkr/plot'
 
 $real_fork = true
 
@@ -14,7 +15,6 @@ def myfork(&block)
 end
 
 def iohub_latency_analyze(plan)
-  use_script :plot
   use_script :io_common
 
   results = load_results()

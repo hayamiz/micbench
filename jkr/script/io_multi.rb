@@ -1,6 +1,7 @@
 
 require 'tempfile'
 require 'jkr/blktrace'
+require 'jkr/plot'
 
 $real_fork = true
 
@@ -15,8 +16,9 @@ def myfork(&block)
 end
 
 def iostress_analyze(plan)
-  use_script :plot
   use_script :io_common
+
+  $plan = plan
 
   results = load_results()
 
@@ -272,17 +274,70 @@ def iostress_plot_blktrace(results)
   rt_blktrace_item_labels = []
   max_cpuid = 0
 
+  vars = $plan.vars.keys.select do |key|
+    $plan.vars[key].size > 1
+  end
+
   results.each_with_index do |ret,ret_idx|
+    title = vars.map{|v| v.to_s+":"+ret[:params][v].to_s}.join(",")
     blktrace = Blktrace.new(result_file_name(ret[:id], "blktrace/#{ret[:params][:device]}"))
+    rd_rt_data = Array.new
+    wr_rt_data = Array.new
 
     max_cpuid = blktrace.map{|rec| rec[0]}.max
+    cpu_issue_count = Array.new(max_cpuid+1){{:value => 0}}
+    cpu_complete_count = Array.new(max_cpuid+1){{:value => 0}}
+
     ioloc_datafiles = (0..(max_cpuid)).map do |cpuid|
       File.open(result_file_name(ret[:id], "blktrace/ioloc#{cpuid}.tsv"), "w")
     end
+    blktrace.raw_each do |record|
+      cpu, seqno, time, action, rwbs, pos_sec, sz_sec = *record
+      if action == "D"
+        cpu_issue_count[cpu] ||= {:value => 0}
+        cpu_issue_count[cpu][:value] += 1
+      elsif action == "C"
+        cpu_issue_count[cpu] ||= {:value => 0}
+        cpu_complete_count[cpu][:value] += 1
+      end
+    end
+
+    plot_bar(:output => rname(ret[:id], "io-per-cpu.eps"),
+             :gpfile => rname(ret[:id], "io-per-cpu.gp"),
+             :datafile => rname(ret[:id], "io-per-cpu.tsv"),
+             :series_labels => ["issue", "complete"],
+             :item_labels => (0..max_cpuid).map{|x| "cpu#{x}"},
+             :item_label_angle => -90,
+             :title => "IO issue/complete per CPU: #{title}",
+             :yrange => "[0:]",
+             :ylabel => "# of requests",
+             :size => "1.1,0.8",
+             :data => [cpu_issue_count, cpu_complete_count],
+             :other_options => "\n")
+
     blktrace.each do |record|
       cpu,seqno,time,action,rwbs,pos_sec,sz_sec,rt = *record
+      if rt < 0
+        puts("RT negative value: #{rt}\t#{record.inspect}")
+      else
+        if rwbs == "R"
+          rd_rt_data.push(rt)
+        elsif rwbs == "W"
+          wr_rt_data.push(rt)
+        end
+      end
       ioloc_datafiles[cpu].puts([time, pos_sec].map(&:to_s).join("\t"))
     end
+
+    xrange_max = [(rd_rt_data.avg || 0), (wr_rt_data.avg || 0)].max * 4
+    plot_distribution(:dataset => {"read RT" => rd_rt_data, "write RT" => wr_rt_data },
+                      :xrange_max => xrange_max,
+                      :xrange_min => 0,
+                      :title => title,
+                      :xlabel => "response time [sec]",
+                      :output => rname(ret[:id], "rt-dist.eps"),
+                      :gpfile => rname(ret[:id], "rt-dist.gp"))
+
     plot_data_ioloc = []
     ioloc_datafiles.each_with_index do |datafile, idx|
       plot_data_ioloc.push({
@@ -290,7 +345,7 @@ def iostress_plot_blktrace(results)
                              :index => "0:0",
                              :datafile => datafile.path,
                              :using => "1:2",
-                             :with => "points",
+                             :with => "points ps 0.4",
                            })
       datafile.close
     end
@@ -299,7 +354,7 @@ def iostress_plot_blktrace(results)
                  :gpfile => result_file_name(ret[:id], "blktrace-ioloc.gp"),
                  :xlabel => "elapsed time [sec]",
                  :ylabel => "location of IO issued [sector]",
-                 :xrange => "[0:0.01]",
+                 :xrange => "[0:0.5]",
                  :yrange => "[0:]",
                  :title => "IO requiests",
                  :plot_data => plot_data_ioloc,

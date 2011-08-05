@@ -14,7 +14,7 @@ end
 def_parameters do
   parameter :command => "./src/micbench mem"
 
-  sizes = (2..22).map{|x| 2**(10+x)}
+  sizes = (6..32).map{|x| 2**(x)}
   sizes += [(32 + 4)*1024]
   sizes += [(32 + 8)*1024]
   sizes += [(128 + 32)*1024]

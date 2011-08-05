@@ -1,8 +1,6 @@
-#!/usr/bin/env ruby
-
+require 'jkr/plot'
 
 def mem_bandwidth_analyze(plan)
-  use_script :plot
   use_script :mem_common
 
   result_groups = Hash.new{[]}

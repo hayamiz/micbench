@@ -1,5 +1,6 @@
 
 require 'tempfile'
+require 'jkr/plot'
 
 $real_fork = true
 
@@ -104,8 +105,6 @@ def load_results()
 end
 
 def io_analyze(plan)
-  use_script :plot
-
   results = load_results()
 
   iostress_plot_all(results)

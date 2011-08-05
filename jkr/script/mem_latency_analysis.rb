@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby
+require 'jkr/plot'
 
 def parse_result(plan, result_id)
   begin
@@ -73,8 +73,6 @@ def parse_result(plan, result_id)
 end
 
 def mem_latency_analyze(plan)
-  use_script :plot
-
   result_groups = Hash.new{[]}
 
   if File.exists?(common_file_name("results.marshal"))
@@ -151,8 +149,6 @@ def mem_latency_analyze(plan)
     end
   }
 
-  p aggregated_results.map{|r| r[:label]}
-
   with_common_file("summary.csv", "w") do |summary|
     oplabels = plan.params[:op_events].map{|ev| [ev, ev+"_err"]}.flatten
     labels = ",size[byte],clk/ops,clk/ops sterr,"+
@@ -176,7 +172,6 @@ def mem_latency_analyze(plan)
       end
 
       summary.puts vals.join(",")
-      puts vals.join(",")
     end
   end
 
@@ -187,7 +182,6 @@ def plot_size_rt(results)
   serieses = Hash.new{Array.new}
 
   results.each do |ret|
-    p [ret[:pattern], ret[:assign]]
     serieses[[ret[:pattern], ret[:assign]]] += [ret]
   end
 
