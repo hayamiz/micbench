@@ -9,6 +9,7 @@
 #include <sched.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <inttypes.h>
 
 typedef struct {
     pid_t tid;
@@ -64,5 +65,18 @@ long          mb_rand_range_long  (long from, long to);
   3-5 => 0x0...011100
   3-5+7 => 0x0...01011100
  */
+
+static inline uint64_t
+mb_read_tsc(void)
+{
+    uintptr_t ret;
+    uint32_t eax, edx;
+    __asm__ volatile("cpuid; rdtsc;"
+                     : "=a" (eax) , "=d" (edx)
+                     :
+                     : "%ebx", "%ecx");
+    ret = ((uint64_t)edx) << 32 | eax;
+    return ret;
+}
 
 #endif
