@@ -245,6 +245,45 @@ def iostress_plot_iostat(results)
                                 }],
                  :other_options => "set key right top\n")
   end
+
+  FileUtils.mkdir_p(cname("iostat"))
+  groups = results.group_by{|ret| [h(ret[:params][:blocksize]), ret[:params][:pattern]]}
+  groups.each do |gparam, group|
+    plot_data = []
+    data_idx = 0
+    gparam = gparam.map(&:to_s).join(",")
+    datafile = File.open(cname("iostat/iostat-#{gparam}.tsv"), "w")
+    group.each do |ret|
+      datafile.puts(File.read(rname(ret[:id], "iostat.tsv")))
+      datafile.puts("\n\n")
+      title = "#{ret[:params][:multiplicity]}t"
+      plot_data.push({
+                       :title => title + ",read",
+                       :datafile => datafile.path,
+                       :using => "1:2",
+                       :index => "#{data_idx}:#{data_idx}",
+                       :with => "lines"
+                     })
+      plot_data.push({
+                       :title => title + ",write",
+                       :datafile => datafile.path,
+                       :using => "1:3",
+                       :index => "#{data_idx}:#{data_idx}",
+                       :with => "lines"
+                     })
+      data_idx += 1
+    end
+
+    plot_scatter(:output => cname("iostat/iostat-#{gparam}.eps"),
+                 :gpfile => cname("iostat/iostat-#{gparam}.gp"),
+                 :xlabel => "elapsed time [sec]",
+                 :ylabel => "transfer rate [MB/sec]",
+                 :xrange => "[0:]",
+                 :yrange => "[0:]",
+                 :title => "IO performance: #{gparam}",
+                 :plot_data => plot_data,
+                 :other_options => "set key right top\n")
+  end
 end
 
 def iostress_plot_iotrace(results)
