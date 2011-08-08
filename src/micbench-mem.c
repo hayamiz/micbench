@@ -167,30 +167,6 @@ thread_handler(void *arg)
     pthread_exit(NULL);
 }
 
-uintptr_t inline
-read_tsc(void)
-{
-    uintptr_t ret;
-    uint32_t eax, edx;
-    __asm__ volatile("cpuid; rdtsc;"
-                     : "=a" (eax) , "=d" (edx)
-                     :
-                     : "%ebx", "%ecx");
-    ret = ((uint64_t)edx) << 32 | eax;
-    return ret;
-}
-
-// uintptr_t
-// read_tsc(void)
-// {
-//     uintptr_t ret;
-//     struct timespec tp;
-//     clock_gettime(CLOCK_MONOTONIC, &tp);
-//     ret = tp.tv_sec * 1000000000 + tp.tv_nsec;
-//     printf("%ld\n", ret);
-//     return ret;
-// }
-
 void
 do_memory_stress_seq(perf_counter_t* pc,
                      long *working_area,
@@ -217,7 +193,7 @@ do_memory_stress_seq(perf_counter_t* pc,
     GETTIMEOFDAY(&start_tv);
     if (option.size < 1024) {
         while((t = mb_elapsed_usec_from(&start_tv)) < timeout){
-            t0 = read_tsc();
+            t0 = mb_read_tsc();
             for(i = 0;i < iter_count;i++){
                 ptr = working_area;
                 ptr_end = working_area + (working_size / sizeof(long));
@@ -226,13 +202,13 @@ do_memory_stress_seq(perf_counter_t* pc,
 #include "micbench-mem-inner-64.c"
                 }
             }
-            t1 = read_tsc();
+            t1 = mb_read_tsc();
             pc->clk += t1 - t0;
             pc->ops += MEM_INNER_LOOP_SEQ_64_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQ_64_REGION_SIZE) * iter_count;
         }
     } else {
         while((t = mb_elapsed_usec_from(&start_tv)) < timeout){
-            t0 = read_tsc();
+            t0 = mb_read_tsc();
             for(i = 0;i < iter_count;i++){
                 ptr = working_area;
                 ptr_end = working_area + (working_size / sizeof(long));
@@ -241,7 +217,7 @@ do_memory_stress_seq(perf_counter_t* pc,
 #include "micbench-mem-inner.c"
                 }
             }
-            t1 = read_tsc();
+            t1 = mb_read_tsc();
             pc->clk += t1 - t0;
             pc->ops += MEM_INNER_LOOP_SEQ_NUM_OPS * (working_size / MEM_INNER_LOOP_SEQ_REGION_SIZE) * iter_count;
         }
@@ -339,13 +315,13 @@ do_memory_stress_rand(perf_counter_t* pc,
     pthread_barrier_wait(barrier);
     GETTIMEOFDAY(&start_tv);
     while((t = mb_elapsed_time_from(&start_tv)) < option.timeout){
-        t0 = read_tsc();
+        t0 = mb_read_tsc();
         ptr = working_area;
         for(i = 0;i < iter_count;i++){
             // read & write cache line 1024 times
 #include "micbench-mem-inner-rand.c"
         }
-        t1 = read_tsc();
+        t1 = mb_read_tsc();
         pc->clk += t1 - t0;
         pc->ops += iter_count * MEM_INNER_LOOP_RANDOM_NUM_OPS;
     }
