@@ -204,6 +204,7 @@ parse_args(int argc, char **argv)
             }
             if (option.affinities == NULL){
                 option.affinities = malloc(sizeof(mb_affinity_t *) * option.multi);
+                bzero(option.affinities, sizeof(mb_affinity_t *) * option.multi);
             }
             if ((aff = mb_parse_affinity(NULL, optarg)) == NULL){
                 fprintf(stderr, "Invalid argument for -a: %s\n", optarg);
