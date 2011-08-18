@@ -23,3 +23,4 @@
 /src/micbench-mem-inner-short.c
 /src/micbench-lock
 /src/micbench-proto
+/src/micbench-lock-mfence-inner.c
