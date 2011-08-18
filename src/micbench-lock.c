@@ -155,19 +155,27 @@ thread_job(th_arg_t *arg)
 {
     long i;
     long j;
-    double x;
+    volatile double x;
 
-    x = 0.0;
+    x = 0.1;
+    asm("# thread job start");
     for(i = 0; i < option.count; i++){
         pthread_spin_lock(arg->slock);
         for(j = 0; j < option.critical_job_size; j++){
-            x += 1.0;
+            if (x > 1.0)
+                x /= 2;
+            else
+                x += 0.3;
         }
         pthread_spin_unlock(arg->slock);
         for(j = 0; j < option.noncritical_job_size; j++){
-            x -= 1.0;
+            if (x > 1.0)
+                x /= 2;
+            else
+                x += 0.3;
         }
     }
+    asm("# thread job end");
 }
 
 void *
