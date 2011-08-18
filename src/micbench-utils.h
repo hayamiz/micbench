@@ -10,6 +10,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <string.h>
 
 typedef struct {
     pid_t tid;
@@ -47,6 +48,16 @@ void           mb_free_affinity(mb_affinity_t *affinity);
  * If some error happen, NULL is returned.
  */
 mb_affinity_t *mb_parse_affinity(mb_affinity_t *ret, const char *optarg);
+
+/**
+ * mb_affinity_to_string:
+ * @affinity: 
+ *
+ * This function makes human-readable representation of
+ * mb_affinity_t. Returned string must be free-ed explicitly.
+ * If some error happen, NULL is returned.
+ */
+char *mb_affinity_to_string(mb_affinity_t *affinity);
 
 double mb_elapsed_time_from(struct timeval *tv);
 long   mb_elapsed_usec_from(struct timeval *tv);

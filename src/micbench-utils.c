@@ -24,6 +24,88 @@ mb_free_affinity(mb_affinity_t *affinity)
     free(affinity);
 }
 
+static int
+__mb_bits_to_string(char *bits, int nbits, char *ret)
+{
+    int i;
+    int start_idx, end_idx;
+    char buf[1024];
+    start_idx = end_idx = -1;
+    bzero(buf, sizeof(buf));
+
+    for (i = 0; i < nbits; i++){
+        int bits_idx, bits_ofst;
+        bits_idx = i / (sizeof(char) * 8);
+        bits_ofst = i - (sizeof(char) * 8) * bits_idx;
+
+        if (start_idx < 0) {
+            if ((bits[bits_idx] & (1 << bits_ofst)) > 0) {
+                start_idx = i;
+            }
+        } else {
+            if ((bits[bits_idx] & (1 << bits_ofst)) > 0) {
+                // bit set, continue scanning...
+            } else {
+                end_idx = i - 1;
+                if (strlen(ret) > 0)
+                    strcat(ret, ",");
+
+                if (start_idx == end_idx) {
+                    sprintf(buf, "%d", start_idx);
+                } else {
+                    sprintf(buf, "%d-%d", start_idx, end_idx);
+                }
+                strcat(ret, buf);
+                start_idx = -1;
+            }
+        }
+    }
+
+    return 0;
+}
+
+char *
+mb_affinity_to_string(mb_affinity_t *affinity)
+{
+    char *ret;
+    char buf[1024];
+    int retsize;
+
+    if (affinity == NULL){
+        return NULL;
+    }
+
+    ret = NULL;
+    retsize = 0;
+
+    sprintf(buf, "%d:", affinity->tid);
+    retsize = strlen(buf) + 1;
+    ret = realloc(ret, sizeof(char) * retsize);
+    ret[0] = '\0';
+    strcat(ret, buf);
+    bzero(buf, sizeof(buf));
+
+    __mb_bits_to_string((char *) affinity->cpumask.__bits,
+                        sizeof(affinity->cpumask.__bits) * 8,
+                        buf);
+    retsize += strlen(buf);
+    ret = realloc(ret, sizeof(char) * retsize);
+    strcat(ret, buf);
+    bzero(buf, sizeof(buf));
+
+    if (affinity->nodemask != 0) {
+        __mb_bits_to_string((char *) &affinity->nodemask,
+                            sizeof(affinity->nodemask) * 8,
+                            buf);
+        retsize += strlen(buf) + 1;
+        ret = realloc(ret, sizeof(char) * retsize);
+        strcat(ret, ":");
+        strcat(ret, buf);
+    }
+
+    return ret;
+}
+
 mb_affinity_t *
 mb_parse_affinity(mb_affinity_t *ret, const char *optarg)
 {
