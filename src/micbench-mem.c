@@ -403,7 +403,7 @@ main(int argc, char **argv)
                 exit(EXIT_FAILURE);
             }
 
-            if (args[i].affinity != NULL){
+            if (args[i].affinity != NULL && args[i].affinity->nodemask != 0){
                 if (mbind(args[i].working_area,
                           mmap_size,
                           MPOL_BIND,
@@ -469,7 +469,7 @@ main(int argc, char **argv)
           maxnodes of mbind(3) seems to require numa_max_node()+2, not
           numa_max_node()+1
         */
-        if (args[0].affinity != NULL){
+        if (args[0].affinity != NULL  && args[0].affinity->nodemask != 0){
             if (mbind(working_area,
                       mmap_size,
                       MPOL_BIND,
