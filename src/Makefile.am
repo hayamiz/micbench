@@ -2,7 +2,7 @@
 AM_CFLAGS = -g -Wall
 LDFLAGS =
 
-bin_PROGRAMS = micbench-io micbench-mem micbench-proto
+bin_PROGRAMS = micbench-io micbench-mem micbench-lock micbench-proto
 
 micbench_io_SOURCES = micbench-io.c micbench-utils.c
 
@@ -12,6 +12,11 @@ micbench_io_LDFLAGS = \
 micbench_mem_SOURCES =  micbench-mem.c micbench-utils.c
 
 micbench_mem_LDFLAGS = \
+	-pthread
+
+micbench_lock_SOURCES =  micbench-lock.c micbench-utils.c
+
+micbench_lock_LDFLAGS = \
 	-pthread
 
 micbench_proto_SOURCES =  micbench-proto.c micbench-utils.c
