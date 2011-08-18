@@ -79,7 +79,7 @@ parse_args(int argc, char **argv)
     option.noncritical_job_size = 1000;
 
     optind = 1;
-    while ((optchar = getopt(argc, argv, "+m:t:a:c:v")) != -1) {
+    while ((optchar = getopt(argc, argv, "+m:t:M:C:N:a:c:v")) != -1) {
         switch(optchar){
         case 'm': // multi
             option.multi = strtol(optarg, NULL, 10);
