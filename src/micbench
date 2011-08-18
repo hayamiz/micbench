@@ -455,9 +455,9 @@ def parse_affinity(aff_str)
       raise ArgumentError.new("Invalid cpu assignment: #{cpu_str}")
     end
     cpu_str.split(",").map do |unit_str|
-      if unit_str[0] == "c"
+      if unit_str[0..0] == "c"
         parse_ids(unit_str, "c")
-      elsif unit_str[0] == "n"
+      elsif unit_str[0..0] == "n"
         node_ids = parse_ids(unit_str, "n")
         if node_ids.is_a? Integer
           node_ids = [node_ids]
