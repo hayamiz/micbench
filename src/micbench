@@ -266,7 +266,7 @@ class LockCommand < BaseCommand
               "Multiplicity of memory access (default: #{@options[:multi]})") do |num|
       @options[:multi] = num
     end
-    available_modes = ["spinlock", "mutex"]
+    available_modes = ["spinlock", "mutex", "mfence"]
     @parser.on('-M', '--mode MODE', "Benchmark mode (available: #{available_modes.join(', ')})") do |mode|
       unless available_modes.include?(mode)
         parse_error.call("Invalid mode: #{mode}")

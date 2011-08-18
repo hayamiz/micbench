@@ -5,6 +5,7 @@
 typedef enum {
     TEST_SPINLOCK,
     TEST_MUTEX,
+    TEST_MFENCE,
 } mb_testmode_t;
 
 struct {
@@ -41,6 +42,7 @@ typedef struct {
 
     pthread_mutex_t *mutex;
     pthread_spinlock_t *slock;
+    long *sc; // shared counter
 } th_arg_t;
 
 // prototype declarations
@@ -109,6 +111,8 @@ parse_args(int argc, char **argv)
                 option.mode = TEST_SPINLOCK;
             } else if (strcmp("mutex", optarg) == 0){
                 option.mode = TEST_MUTEX;
+            } else if (strcmp("mfence", optarg) == 0){
+                option.mode = TEST_MFENCE;
             } else {
                 fprintf(stderr, "No such test mode: %s\n", optarg);
                 exit(EXIT_FAILURE);
@@ -144,7 +148,7 @@ parse_args(int argc, char **argv)
 }
 
 static void
-thread_job(th_arg_t *arg)
+thread_job_spinlock(th_arg_t *arg)
 {
     long i;
     long j;
@@ -169,6 +173,56 @@ thread_job(th_arg_t *arg)
         }
     }
     asm("# thread job end");
+    arg->pc.ops = option.count;
+}
+
+static void
+thread_job_mutex(th_arg_t *arg)
+{
+    long i;
+    long j;
+    volatile double x;
+
+    x = 0.1;
+    asm("# thread job mutex start");
+    for(i = 0; i < option.count; i++){
+        pthread_mutex_lock(arg->mutex);
+        for(j = 0; j < option.critical_job_size; j++){
+            if (x > 1.0)
+                x /= 2;
+            else
+                x += 0.3;
+        }
+        pthread_mutex_unlock(arg->mutex);
+        for(j = 0; j < option.noncritical_job_size; j++){
+            if (x > 1.0)
+                x /= 2;
+            else
+                x += 0.3;
+        }
+    }
+    asm("# thread job mutex end");
+    arg->pc.ops = option.count;
+}
+
+static void
+thread_job_mfence(th_arg_t *arg)
+{
+    long i;
+    volatile double x;
+
+    x = 0.1;
+    asm("# thread job mfence start");
+    for(i = 0; i < option.count; i++){
+        __asm__ volatile(
+#include "micbench-lock-mfence-inner.c"
+            : "=a" (arg->sc)
+            : "0" (arg->sc)
+            );
+
+    }
+    asm("# thread job mfence end");
+    arg->pc.ops = option.count * 128;
 }
 
 void *
@@ -186,11 +240,20 @@ thread_handler(void *arg)
     // do some jobs
     pthread_barrier_wait(th_arg->barrier);
     t0 = mb_read_tsc();
-    thread_job(th_arg);
+    switch(option.mode){
+    case TEST_SPINLOCK:
+        thread_job_spinlock(th_arg);
+        break;
+    case TEST_MUTEX:
+        thread_job_mutex(th_arg);
+        break;
+    case TEST_MFENCE:
+        thread_job_mfence(th_arg);
+        break;
+    }
     t1 = mb_read_tsc();
 
     th_arg->pc.clk = t1 - t0;
-    th_arg->pc.ops = option.count;
 
     pthread_exit(NULL);
 }
@@ -203,6 +266,7 @@ main(int argc, char **argv)
     pthread_barrier_t *barrier;
     pthread_mutex_t *mutex;
     pthread_spinlock_t *slock;
+    long *sc;
 
     if (getenv("MICBENCH") == NULL) {
         fprintf(stderr, "This process may be invoked without micbench command.\n");
@@ -214,10 +278,12 @@ main(int argc, char **argv)
     barrier = malloc(sizeof(pthread_barrier_t));
     mutex = malloc(sizeof(pthread_mutex_t));
     slock = malloc(sizeof(pthread_spinlock_t));
+    sc = malloc(sizeof(long));
 
     pthread_barrier_init(barrier, NULL, option.multi);
     pthread_mutex_init(mutex, NULL);
     pthread_spin_init(slock, PTHREAD_PROCESS_PRIVATE);
+    *sc = 0;
 
     for(i = 0;i < option.multi;i++){
         args[i].id = i;
@@ -227,6 +293,7 @@ main(int argc, char **argv)
         args[i].barrier = barrier;
         args[i].mutex = mutex;
         args[i].slock = slock;
+        args[i].sc = sc;
         if (option.affinities != NULL) {
             args[i].affinity = option.affinities[i];
         } else {

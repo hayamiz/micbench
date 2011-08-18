@@ -33,6 +33,8 @@ all: __micbench-io __micbench-mem
 
 micbench-mem.c: micbench-mem-inner.c micbench-mem-inner-rand.c micbench-mem-inner-64.c
 
+micbench-lock.c: micbench-lock-mfence-inner.c
+
 micbench-mem-inner.c: ./gen-mem-innerloop.rb
 	ruby $^ > $@
 micbench-mem-inner-64.c: ./gen-mem-innerloop.rb
@@ -40,3 +42,6 @@ micbench-mem-inner-64.c: ./gen-mem-innerloop.rb
 
 micbench-mem-inner-rand.c: ./gen-mem-innerloop.rb
 	ruby $^ --random > $@
+
+micbench-lock-mfence-inner.c: Makefile
+	for i in $$(seq 128); do echo "\"incq	(%%rax);\\n\""; echo "\"mfence\\n\""; done > $@
