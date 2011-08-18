@@ -251,10 +251,16 @@ main(int argc, char **argv)
 
     // TODO: print summary and results
     printf("multiplicity\t%d\n"
-           "mode\t%s\n",
+           "mode\t%s\n"
+           "count\t%ld\n"
+           "critical_job_size\t%ld\n"
+           "noncritical_job_size\t%ld\n",
            option.multi,
            (option.mode == TEST_SPINLOCK ? "spinlock" :
-            (option.mode == TEST_MUTEX ? "mutex" : "unknown"))
+            (option.mode == TEST_MUTEX ? "mutex" : "unknown")),
+           option.count,
+           option.critical_job_size,
+           option.noncritical_job_size
         );
     if (option.affinities != NULL) {
         for(i = 0; i < option.multi; i++){
@@ -273,6 +279,22 @@ main(int argc, char **argv)
         for(i = 0;i < option.multi;i++){
             mb_free_affinity(option.affinities[i]);
         }
+    }
+
+    // print results
+    for(i = 0;i < option.multi;i++){
+        long clk;
+        long ops;
+        double clk_per_ops;
+        clk = args[i].pc.clk;
+        ops = args[i].pc.ops;
+        clk_per_ops = (double)clk / (double) ops;
+        printf("clk_%d\t%ld\n"
+               "ops_%d\t%ld\n"
+               "clk_per_ops_%d\t%lf\n",
+               i, clk,
+               i, ops,
+               i, clk_per_ops);
     }
 
     for(i = 0;i < option.multi;i++){
