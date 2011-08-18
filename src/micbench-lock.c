@@ -12,9 +12,6 @@ struct {
     int multi;
     mb_affinity_t **affinities;
 
-    // timeout
-    int timeout;
-
     // count
     long count;
     long critical_job_size;
@@ -70,7 +67,6 @@ parse_args(int argc, char **argv)
     int idx;
 
     option.multi = 1;
-    option.timeout = 10;
     option.affinities = NULL;
     option.count = 2 << 20;
     option.verbose = false;
@@ -79,13 +75,10 @@ parse_args(int argc, char **argv)
     option.noncritical_job_size = 1000;
 
     optind = 1;
-    while ((optchar = getopt(argc, argv, "+m:t:M:C:N:a:c:v")) != -1) {
+    while ((optchar = getopt(argc, argv, "+m:M:C:N:a:c:v")) != -1) {
         switch(optchar){
         case 'm': // multi
             option.multi = strtol(optarg, NULL, 10);
-            break;
-        case 't': // timeout
-            option.timeout = strtol(optarg, NULL, 10);
             break;
         case 'a': // affinity
         {
