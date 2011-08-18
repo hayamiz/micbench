@@ -235,6 +235,117 @@ class MemoryCommand < BaseCommand
   end
 end
 
+class LockCommand < BaseCommand
+  command_name "lock", "lock and sync. cost benchmark"
+
+  def init_option_parser()
+    @options[:multi] = 1
+    @options[:mode] = "spinlock"
+    @options[:affinity] = {}
+    @options[:count] = 1000000
+    @options[:critical_job_size] = 10
+    @options[:noncritical_job_size] = 1000
+    @options[:verbose] = false
+    @options[:debug] = false
+
+    parse_error = lambda do |*msg|
+      if msg.size > 0
+        msg.each do |m|
+          $stderr.puts("#{$0}: #{m}")
+        end
+      end
+      puts @parser.help
+      exit(false)
+    end
+
+    @parser.on('-h', '--help', "Show help") do
+      puts @parser.help
+      exit(true)
+    end
+    @parser.on('-m', '--multi NUM', Integer,
+              "Multiplicity of memory access (default: #{@options[:multi]})") do |num|
+      @options[:multi] = num
+    end
+    available_modes = ["spinlock", "mutex"]
+    @parser.on('-M', '--mode MODE', "Benchmark mode (available: #{available_modes.join(', ')})") do |mode|
+      unless available_modes.include?(mode)
+        parse_error.call("Invalid mode: #{mode}")
+      end
+      @options[:mode] = mode
+    end
+    @parser.on('-c', '--count NUM',
+              "# of operations to be performed (default: #{@options[:count]}sec)") do |num|
+      if num =~ /\A\d+\Z/
+        @options[:count] = num.to_i
+      else
+        parse_error.call("--count requires positive integer.")
+      end
+    end
+    @parser.on('-C', '--critical COUNT',
+               "# of operations in a critical section (default: #{@options[:critical_job_size]})") do |num|
+      if num =~ /\A\d+\Z/
+        @options[:critical_job_size] = num.to_i
+      else
+        parse_error.call("--critical requires positive integer.")
+      end
+    end
+    @parser.on('-N', '--non-critical COUNT',
+               "# of operations outside of a critical section (default: #{@options[:noncritical_job_size]})") do |num|
+      if num =~ /\A\d+\Z/
+        @options[:noncritical_job_size] = num.to_i
+      else
+        parse_error.call("--non-critical requires positive integer.")
+      end
+    end
+    @parser.on('-a', '--affinity AFFINITY', "CPU and memory utilization policy") do |affinity|
+      @options[:affinity] = @options[:affinity].merge(parse_affinity(affinity))
+    end
+    @parser.on('-v', '--verbose') do
+      @options[:verbose] = true
+    end
+    @parser.on('--debug') do
+      @options[:debug] = true
+    end
+  end
+
+  def check_option()
+    @options[:affinity] = @options[:affinity].select do |tid,entry|
+      tid < @options[:multi]
+    end.map do |tid, entry|
+      cpuset = entry[0]
+      mnodeset = entry[1]
+      max_cpuid = cpuset.max
+      max_mnodeid = mnodeset.max
+      cpu_bitmap = (0..[max_cpuid, $logicores - 1].min).map{|cpuid| cpuset.include?(cpuid) ? "1" : "0"}.join("")
+      mnode_bitmap = (0..[max_mnodeid, $nodes - 1].min).map{|nodeid| mnodeset.include?(nodeid) ? "1" : "0"}.join("")
+      "#{tid}:#{cpu_bitmap}:#{mnode_bitmap}"
+    end
+  end
+
+  def do_cmd(argv)
+    if ! argv.empty?
+      $stderr.puts("Following arguments are ignored: #{argv.join(' ')}")
+    end
+    real_command = File.join(File.dirname(__FILE__), "micbench-lock")
+    real_command_str = [real_command,
+                        "-m", @options[:multi],
+                        "-M", @options[:mode],
+                        "-C", @options[:critical_job_size],
+                        "-N", @options[:noncritical_job_size],
+                        "-c", @options[:count],
+                        (@options[:verbose] ? "-v" : []),
+                        @options[:affinity].map{|aff| ["-a", aff]}].flatten.join(" ")
+
+    if ENV['MB_DEBUG'] || @options[:debug]
+      puts real_command_str
+    end
+    if ENV['MB_LEAKCHECK']
+      real_command_str = "valgrind --leak-check=full " + real_command_str
+    end
+    exec(real_command_str)
+  end
+end
+
 class IoCommand < BaseCommand
   command_name "io", "IO benchmark on block devices and files"
 
