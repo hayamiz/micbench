@@ -13,7 +13,7 @@ def system_(*args)
 end
 
 def_parameters do
-  variable :blocksize => [512, 2**16]
+  variable :blocksize => [512, 2**12, 2**13, 2**14, 2**16]
   variable :pattern => [:random]
   variable :mode => [:read] # [:read, :write]
   # variable :multiplicity => (1..10).map{|x| 2**x}.shuffle # (1..64).to_a.shuffle
@@ -26,13 +26,14 @@ def_parameters do
   #   }
   #   ret
   # }.flatten.shuffle
-  variable :multiplicity => [1, 4, 16]
+  variable :multiplicity => [1, 2, 4, 8, 12, 16, 20, 32]
 
-  variable :device => ["fioa", "fiob"]
+  variable :device => ["fioa"]
   # variable :device => ["fioa", "fiob"]
   parameter :direct_io => true
   parameter :timeout => 30
   parameter :use_systemtap => false
+  parameter :affinity => "0-31:n2:0"
 
   # parameter :use_blktrace => true
   variable :use_blktrace => [true, false]
@@ -100,7 +101,7 @@ def_routine do |plan, params|
                     params[:sys_monitor_interval],
                     monitor_times, " > ", touch_result_file("iostat.txt")) do
         params[:start_time] = Time.now
-        args = ["./src/micbench-io"]
+        args = ["./src/micbench io"]
         args += ["--multi", params[:multiplicity]]
         if params[:mode] == :write
           args += ["--write"]
@@ -113,6 +114,9 @@ def_routine do |plan, params|
           args += ["--direct"]
         end
         args += ["--timeout", params[:timeout]]
+        if params[:affinity]
+          args += ["--affinity", params[:affinity]]
+        end
 
         args += [params[:device_or_file]]
 

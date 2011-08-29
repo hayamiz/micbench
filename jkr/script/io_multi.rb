@@ -284,31 +284,44 @@ def iostress_plot_blktrace(results)
     rd_rt_data = Array.new
     wr_rt_data = Array.new
 
-    max_cpuid = blktrace.map{|rec| rec[0]}.max
-    cpu_issue_count = Array.new(max_cpuid+1){{:value => 0}}
-    cpu_complete_count = Array.new(max_cpuid+1){{:value => 0}}
-
-    ioloc_datafiles = (0..(max_cpuid)).map do |cpuid|
+    num_cpu = Dir.glob(rname(ret[:id], "blktrace/*.blktrace.*")).size
+    ioloc_datafiles = (0..(num_cpu - 1)).map do |cpuid|
       File.open(result_file_name(ret[:id], "blktrace/ioloc#{cpuid}.tsv"), "w")
     end
+
+    cpu_issue_count = []
+    cpu_complete_count = []
     blktrace.raw_each do |record|
       cpu, seqno, time, action, rwbs, pos_sec, sz_sec = *record
       if action == "D"
         cpu_issue_count[cpu] ||= {:value => 0}
         cpu_issue_count[cpu][:value] += 1
       elsif action == "C"
-        cpu_issue_count[cpu] ||= {:value => 0}
+        cpu_complete_count[cpu] ||= {:value => 0}
         cpu_complete_count[cpu][:value] += 1
       end
     end
-
+    cpu_issue_count = cpu_issue_count.map do |datum|
+      if datum
+        datum
+      else
+        {:value => 0}
+      end
+    end
+    cpu_complete_count = cpu_complete_count.map do |datum|
+      if datum
+        datum
+      else
+        {:value => 0}
+      end
+    end
     plot_bar(:output => rname(ret[:id], "io-per-cpu.eps"),
              :gpfile => rname(ret[:id], "io-per-cpu.gp"),
              :datafile => rname(ret[:id], "io-per-cpu.tsv"),
              :series_labels => ["issue", "complete"],
-             :item_labels => (0..max_cpuid).map{|x| "cpu#{x}"},
+             :item_labels => (0..([cpu_issue_count.size, cpu_complete_count.size].max - 1)).map{|x| "cpu#{x}"},
              :item_label_angle => -90,
-             :title => "IO issue/complete per CPU: #{title}",
+             :title => "#{ret[:id]}: IO issue/complete per CPU: #{title}",
              :yrange => "[0:]",
              :ylabel => "# of requests",
              :size => "1.1,0.8",
@@ -336,6 +349,7 @@ def iostress_plot_blktrace(results)
                       :title => title,
                       :xlabel => "response time [sec]",
                       :output => rname(ret[:id], "rt-dist.eps"),
+                      :datafile => rname(ret[:id], "rt-dist.tsv"),
                       :gpfile => rname(ret[:id], "rt-dist.gp"))
 
     plot_data_ioloc = []
