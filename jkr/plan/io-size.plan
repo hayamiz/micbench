@@ -24,15 +24,13 @@ def_parameters do
     }
     ret
   }.flatten.shuffle
-  # variable :pattern => [:sequential, :random]
-  variable :pattern => [:random]
+  variable :pattern => [:sequential, :random]
+  # variable :pattern => [:random]
   variable :mode => [:read] # [:read, :write]
 
-  variable :multiplicity => [1]
-  parameter :thread_affinity => "0:8"
-  # parameter :thread_affinity => (0..7).map{|x| "#{2*x}-#{2*x+1}:#{x+8}"}.join(",")
+  variable :multiplicity => [32]
 
-  variable :device => ["fioa", "fiob", "fioc", "fiod"]
+  variable :device => ["sdb"]
   parameter :direct_io => true
   parameter :timeout => 30
   parameter :use_systemtap => false
@@ -67,7 +65,7 @@ def_routine do |plan, params|
   params[:device_or_file] = "/dev/#{params[:device]}"
 
   system_("echo noop > /sys/block/#{params[:device]}/queue/scheduler")
-  system_("./src/micbench_io --direct -t 10 -b 64k -m 32 --rand -v #{params[:device_or_file]} # disturb cache")
+  # system_("./src/micbench-io --direct -t 10 -b 64k -m 32 --rand -v #{params[:device_or_file]} # disturb cache")
 
   begin
     printf("multi: %d, mode: %s, pattern %s, blocksize: %s\n",
@@ -93,16 +91,13 @@ def_routine do |plan, params|
                     params[:sys_monitor_interval],
                     monitor_times, " > ", touch_result_file("iostat.txt")) do
         params[:start_time] = Time.now
-        args = ["./src/micbench_io"]
+        args = ["./src/micbench io"]
         args += ["--multi", params[:multiplicity]]
         if params[:mode] == :write
           args += ["--write"]
         end
         if params[:pattern] == :random
           args += ["--rand"]
-        end
-        if params[:thread_affinity]
-          args += ["-A", params[:thread_affinity]]
         end
         args += ["--blocksize", params[:blocksize]]
         if params[:direct_io]

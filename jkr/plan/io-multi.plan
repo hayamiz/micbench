@@ -13,30 +13,20 @@ def system_(*args)
 end
 
 def_parameters do
-  variable :blocksize => [512, 2**12, 2**13, 2**14, 2**16]
-  variable :pattern => [:random]
+  variable :blocksize => [4 * 1024]
+  variable :pattern => [:random, :sequential]
   variable :mode => [:read] # [:read, :write]
-  # variable :multiplicity => (1..10).map{|x| 2**x}.shuffle # (1..64).to_a.shuffle
-  # variable :multiplicity => (0..8).map{|x|
-  #   base = 2**x
-  #   sample = 2**([3,[0, x].max].min)
-  #   ret = []
-  #   sample.times{|y|
-  #     ret.push(base + y * base / sample)
-  #   }
-  #   ret
-  # }.flatten.shuffle
-  variable :multiplicity => [1, 2, 4, 8, 12, 16, 20, 32]
+  variable :multiplicity => (1..32).to_a
 
-  variable :device => ["fioa"]
+  variable :device => ["sdb"]
   # variable :device => ["fioa", "fiob"]
   parameter :direct_io => true
   parameter :timeout => 30
   parameter :use_systemtap => false
-  parameter :affinity => "0-31:n2:0"
+  parameter :affinity => nil # "0-31:n2:0"
 
   # parameter :use_blktrace => true
-  variable :use_blktrace => [true, false]
+  parameter :use_blktrace => false
   # TODO: check debugfs and mount on demand
 
   # interval of monitoring system state in second
