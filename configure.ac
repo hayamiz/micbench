@@ -46,10 +46,16 @@ dnl Check for libnuma
 dnl ******************************
 
 AC_CHECK_HEADERS(numa.h, [have_numa_h=yes], [have_numa_h=no])
+AC_CHECK_HEADERS(numaif.h, [have_numaif_h=yes], [have_numaif_h=no])
 AC_CHECK_LIB(numa, numa_available, [have_libnuma=yes], [have_libnuma=no])
 
+if ! test "$have_numaif_h" = "yes"; then
+  AC_MSG_ERROR([numaif.h is required.])
+fi
 if test "$have_numa_h" = "yes"; then
   AC_DEFINE([HAVE_NUMA_H], [1], [Define if numa.h exists.])
+else
+  AC_MSG_ERROR([numa.h is required.])
 fi
 AC_DEFINE([HAVE_NUMA_H], [1], [Define if numa.h exists.])
 
