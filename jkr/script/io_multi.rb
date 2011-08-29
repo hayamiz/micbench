@@ -45,6 +45,7 @@ def iostress_plot_all(results, prefix = "")
   style_idx = 1
   results.group_by do |ret|
     [ret[:params][:mode],
+     ret[:params][:pattern],
      ret[:params][:blocksize],
      ret[:params][:device],
      (ret[:params][:use_blktrace] ? "blktrace" : "no-blktrace")]
@@ -267,6 +268,7 @@ def iostress_plot_blktrace(results)
   results = results.select do |ret|
     File.exists?(result_file_name(ret[:id], "blktrace"))
   end
+  return if results.empty?
 
   # results = results.first(2) # for test
 

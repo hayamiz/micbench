@@ -11,16 +11,22 @@ def system_(*args)
 end
 
 def_parameters do
-  variable :blocksize => [4 * 1024]
-  variable :pattern => [:random, :sequential]
+  variable :blocksize => [64 * 1024, 256 * 1024]
+  variable :pattern => [:sequential]
   variable :mode => [:read] # [:read, :write]
-  variable :multiplicity => (1..32).to_a
+  variable :multiplicity => [1, 32]
 
   # variable :devices => (1..20).map{|num_dev|
   #   devices = ("b".."u").map{|devchar| "sd#{devchar}"}
   #   devices.first(num_dev)
   # }
-  parameter :devices => ("b".."u").map{|devchar| "sd#{devchar}"}
+  # parameter :devices => ("b".."u").map{|devchar| "sd#{devchar}"}
+  variable :devices => [["sdb"],
+                        ["sdb", "sdc"],
+                        ["sdb", "sdc", "sdd"],
+                        ["sdb", "sdc", "sdd", "sde"],
+                        ["sdb", "sdc", "sdd", "sde", "sdf"],
+                        ("b".."u").map{|devchar| "sd#{devchar}"}]
 
   parameter :direct_io => true
   parameter :timeout => 30
