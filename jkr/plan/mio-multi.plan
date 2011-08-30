@@ -3,6 +3,8 @@
 title "IO measurements for Multiple Devices"
 description "Measure IO performance"
 
+use_script :n2dl
+
 def system_(*args)
   puts "system_: #{args.join(' ')}"
   unless system(*args)
@@ -11,22 +13,16 @@ def system_(*args)
 end
 
 def_parameters do
-  variable :blocksize => [64 * 1024, 256 * 1024]
-  variable :pattern => [:sequential]
+  variable :blocksize => [4 * 1024]
+  variable :pattern => [:random, :sequential]
   variable :mode => [:read] # [:read, :write]
-  variable :multiplicity => [1, 32]
+  variable :multiplicity => (1..32).to_a
 
   # variable :devices => (1..20).map{|num_dev|
   #   devices = ("b".."u").map{|devchar| "sd#{devchar}"}
   #   devices.first(num_dev)
   # }
-  # parameter :devices => ("b".."u").map{|devchar| "sd#{devchar}"}
-  variable :devices => [["sdb"],
-                        ["sdb", "sdc"],
-                        ["sdb", "sdc", "sdd"],
-                        ["sdb", "sdc", "sdd", "sde"],
-                        ["sdb", "sdc", "sdd", "sde", "sdf"],
-                        ("b".."u").map{|devchar| "sd#{devchar}"}]
+  parameter :devices => (1..80).map{|idx| "sd"+n2dl(idx)}
 
   parameter :direct_io => true
   parameter :timeout => 30
@@ -151,8 +147,6 @@ def_routine do |plan, params|
               errmsg + "\n\n" + params.inspect)
     exit(1)
   end
-  FileUtils.chown_R(ENV['USER'], nil, [File.dirname(result_file_name("foo"))],
-                    :verbose => true)
 end
 
 def send_mail(subject, addrs, body, files = [])

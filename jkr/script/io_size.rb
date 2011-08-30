@@ -149,7 +149,8 @@ def iostress_plot_all(results)
   results.group_by do |ret|
     [ret[:params][:mode],
      ret[:params][:pattern],
-     ret[:params][:device]]
+     ret[:params][:device],
+     ret[:params][:multiplicity]]
   end.sort_by do |group_param, group|
     group_param.join("-")
   end.each do |group_param, group|

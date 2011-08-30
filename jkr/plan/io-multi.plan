@@ -16,12 +16,12 @@ def_parameters do
   variable :blocksize => [4 * 1024]
   variable :pattern => [:random, :sequential]
   variable :mode => [:read] # [:read, :write]
-  variable :multiplicity => (1..32).to_a
+  variable :multiplicity => (1..64).to_a
 
   variable :device => ["sdb"]
   # variable :device => ["fioa", "fiob"]
   parameter :direct_io => true
-  parameter :timeout => 30
+  parameter :timeout => 20
   parameter :use_systemtap => false
   parameter :affinity => nil # "0-31:n2:0"
 
@@ -145,8 +145,6 @@ def_routine do |plan, params|
               errmsg + "\n\n" + params.inspect)
     exit(1)
   end
-  FileUtils.chown_R(ENV['USER'], nil, [File.dirname(result_file_name("foo"))],
-                    :verbose => true)
 end
 
 def send_mail(subject, addrs, body, files = [])
