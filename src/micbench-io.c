@@ -39,6 +39,9 @@ static struct {
     // device or file
     const char *path;
 
+    // bogus computation
+    long bogus_comp; // # of computation to be operated
+
     bool verbose;
 
     bool noop;
@@ -128,21 +131,23 @@ access_pattern  %s\n\
 access_mode     %s\n\
 direct_io       %s\n\
 timeout         %d\n\
+bogus_comp		%ld\n\
 block_size      %d\n\
 offset_start    %ld\n\
 offset_end      %ld\n\
 misalign        %ld\n\
 ",
-               option.multi,
-               option.path,
-               (option.seq ? "sequential" : "random"),
-               (option.read ? "read" : "write"),
-               (option.direct ? "yes" : "no"),
-               option.timeout,
-               option.blk_sz,
-               option.ofst_start,
-               option.ofst_end,
-               option.misalign);
+            option.multi,
+            option.path,
+            (option.seq ? "sequential" : "random"),
+            (option.read ? "read" : "write"),
+            (option.direct ? "yes" : "no"),
+            option.timeout,
+            option.bogus_comp,
+            option.blk_sz,
+            option.ofst_start,
+            option.ofst_end,
+            option.misalign);
 }
 
 void
@@ -171,6 +176,7 @@ parse_args(int argc, char **argv)
     option.multi = 1;
     option.affinities = NULL;
     option.timeout = 60;
+    option.bogus_comp = 0;
     option.read = true;
     option.write = false;
     option.seq = true;
@@ -183,7 +189,7 @@ parse_args(int argc, char **argv)
     option.verbose = false;
 
     optind = 1;
-    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdWb:s:e:z:v")) != -1){
+    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdWb:s:e:z:c:v")) != -1){
         switch(optchar){
         case 'N': // noop
             option.noop = true;
@@ -243,6 +249,9 @@ parse_args(int argc, char **argv)
             break;
         case 'z': // misalignment
             option.misalign = strtol(optarg, NULL, 10);
+            break;
+        case 'c': // # of computation operated between each IO
+            option.bogus_comp = strtol(optarg, NULL, 10);
             break;
         case 'v': // verbose
             option.verbose = true;
@@ -393,6 +402,12 @@ do_iostress(th_arg_t *th_arg)
                 }
                 iowait_time += mb_elapsed_time_from(&timer);
                 io_count ++;
+
+                long idx;
+                volatile double dummy = 0.0;
+                for(idx = 0; idx < option.bogus_comp; idx++){
+                    dummy += idx;
+                }
             }
         }
     } else if (option.seq) {
