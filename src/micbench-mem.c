@@ -339,7 +339,9 @@ main(int argc, char **argv)
     pthread_barrier_t *barrier;
 
     if (getenv("MICBENCH") == NULL) {
-        fprintf(stderr, "This process may be invoked without micbench command.\n");
+        fprintf(stderr, "Variable MICBENCH is not set.\n"
+                "This process should be invoked via \"micbench\" command.\n");
+        exit(EXIT_FAILURE);
     }
 
     parse_args(argc, argv);

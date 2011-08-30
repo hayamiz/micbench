@@ -481,6 +481,12 @@ main(int argc, char **argv)
     long common_seed;
     double exec_time;
 
+    if (getenv("MICBENCH") == NULL) {
+        fprintf(stderr, "Variable MICBENCH is not set.\n"
+                "This process should be invoked via \"micbench\" command.\n");
+        exit(EXIT_FAILURE);
+    }
+
     parse_args(argc, argv);
 
     if (option.noop == true){
