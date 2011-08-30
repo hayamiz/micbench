@@ -356,6 +356,7 @@ class IoCommand < BaseCommand
     @options[:timeout] = 60
     @options[:mode] = :read
     @options[:pattern] = :seq
+    @options[:bogus_comp] = 0
     @options[:direct] = false
     @options[:blocksize] = 16 * 1024
     @options[:offset_start] = 0
@@ -407,6 +408,10 @@ class IoCommand < BaseCommand
     @parser.on('-R', '--rand',
               "Random access mode (default: sequential access mode)") do
       @options[:pattern] = :rand
+    end
+    @parser.on('-c', '--bogus-comp NUM',
+               "# of bogus computation to be operated between each IO (default: 0)") do |num|
+      @options[:bogus_comp] = num.to_i
     end
     @parser.on('-d', '--direct',
               "Use O_DIRECT (default: no). If this flag is specified, block size must be multiples of block size of devices.") do
@@ -485,6 +490,7 @@ class IoCommand < BaseCommand
                         @options[:affinity].map{|aff| ["-a", aff]},
                         "-t", @options[:timeout],
                         (@options[:pattern] == :rand ? "-R" : "-S"),
+                        "-c", @options[:bogus_comp],
                         (@options[:direct] ? "-d" : []),
                         (@options[:mode] == :write ? "-W" : []),
                         "-b", @options[:blocksize],
