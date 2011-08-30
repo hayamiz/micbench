@@ -429,6 +429,12 @@ do_iostress(th_arg_t *th_arg)
                 iowait_time += mb_elapsed_time_from(&timer);
                 io_count ++;
 
+                long idx;
+                volatile double dummy = 0.0;
+                for(idx = 0; idx < option.bogus_comp; idx++){
+                    dummy += idx;
+                }
+
                 ofst ++;
                 if (ofst >= option.ofst_end) {
                     ofst = option.ofst_start;
