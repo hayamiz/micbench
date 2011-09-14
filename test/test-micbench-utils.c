@@ -33,7 +33,28 @@ test_getsize(void)
 }
 
 void
+test_mb_make_affinity(void)
+{
+    cut_assert_not_null(mb_make_affinity());
+}
+
+void
 test_parse_affinity(void)
 {
+    mb_affinity_t affinity;
+    cut_assert_null(mb_parse_affinity(&affinity, "0:1"));
+    cut_assert_not_null(mb_parse_affinity(&affinity, "0:1:1"));
+    cut_assert_equal_int(0, affinity.tid);
+    cut_assert_equal_int(1, affinity.cpumask.__bits[0]);
+    cut_assert_equal_int(1, affinity.nodemask);
 
+    cut_assert_not_null(mb_parse_affinity(&affinity, "1:111:111"));
+    cut_assert_equal_int(1, affinity.tid);
+    cut_assert_equal_int(7, affinity.cpumask.__bits[0]);
+    cut_assert_equal_int(7, affinity.nodemask);
+
+    cut_assert_not_null(mb_parse_affinity(&affinity, "2:0001:01"));
+    cut_assert_equal_int(2, affinity.tid);
+    cut_assert_equal_int(8, affinity.cpumask.__bits[0]);
+    cut_assert_equal_int(2, affinity.nodemask);
 }
