@@ -69,7 +69,7 @@ def iostress_plot_all(results, prefix = "")
     datafile.puts("\n\n")
     datafile.fsync
 
-    title = group_param.join("-")
+    title = group_param.map{|str| str.to_s.gsub('/', '!')}.join("-")
     style_spec = "lt #{style_idx} lc #{style_idx}"
     transfer_entry = {
       :title => title,

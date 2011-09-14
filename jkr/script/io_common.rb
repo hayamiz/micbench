@@ -61,7 +61,7 @@ def iostress_parse_result(result_id)
   end
   
   result[:target_dev] = target_dev = nil
-  if result[:params][:device_or_file] =~ /^\/dev\/([a-z]+[0-9]*)$/
+  if result[:params][:device_or_file] =~ /^\/dev\/((?:[a-z]+[0-9]*\/?)+)$/
     result[:target_dev] = target_dev = $1
   end
   
