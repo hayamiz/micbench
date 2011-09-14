@@ -2,8 +2,8 @@
 AM_CFLAGS = -g -Wall
 LDFLAGS = -no-undefined
 
-noinst_LTLIBRARIES = \
-	libmicbench-io.la
+noinst_LTLIBRARIES =				\
+	libmicbench-io.la			\
 	libmicbench-utils.la
 
 bin_PROGRAMS = micbench-io micbench-mem micbench-lock micbench-proto
