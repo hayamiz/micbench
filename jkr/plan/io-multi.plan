@@ -13,15 +13,15 @@ def system_(*args)
 end
 
 def_parameters do
-  variable :blocksize => [4 * 1024]
-  variable :pattern => [:random, :sequential]
-  variable :mode => [:read] # [:read, :write]
-  variable :multiplicity => (1..64).to_a
+  variable :blocksize => [4 * 1024, 16 * 1024, 20 * 1024, 32 * 1024]
+  variable :pattern => [:random]
+  variable :mode => [:read]
+  variable :multiplicity => (1..16).to_a
 
-  variable :device => ["sdb"]
+  variable :device => ["fioh"]
   # variable :device => ["fioa", "fiob"]
   parameter :direct_io => true
-  parameter :timeout => 20
+  parameter :timeout => 30
   parameter :use_systemtap => false
   parameter :affinity => nil # "0-31:n2:0"
 
@@ -60,11 +60,17 @@ def_routine do |plan, params|
 
   params[:device_or_file] = "/dev/#{params[:device]}"
 
+  if params[:device_or_file] == "/dev/fioh"
+    system_("fio-detach /dev/fct7")
+    system_("yes | fio-format /dev/fct7")
+    system_("fio-attach /dev/fct7")
+  end
+
   if params[:use_blktrace]
     FileUtils.mkdir_p(result_file_name("blktrace"))
   end
 
-  system_("echo noop > /sys/block/#{params[:device]}/queue/scheduler")
+  system_("echo noop > /sys/block/#{params[:device].gsub(/\//, '!')}/queue/scheduler")
   # system_("./src/micbench-io --direct -t 10 -b 64k -m 32 --rand -v #{params[:device_or_file]} # disturb cache")
 
   begin
