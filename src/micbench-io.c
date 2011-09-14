@@ -1,7 +1,7 @@
 #define _GNU_SOURCE
 #define _LARGEFILE64_SOURCE
 
-#include "micbench.h"
+#include "micbench-io.h"
 
 typedef struct {
     pid_t thread_id;
@@ -9,43 +9,7 @@ typedef struct {
     unsigned long nodemask;
 } thread_assignment_t;
 
-static struct {
-    // multiplicity of IO
-    int multi;
-
-    // access mode
-    bool seq;
-    bool rand;
-    bool direct;
-    bool read;
-    bool write;
-
-    // thread affinity assignment
-    mb_affinity_t **affinities;
-
-    // timeout
-    int timeout;
-
-    // block size
-    char *blk_sz_str;
-    int blk_sz;
-
-    // offset
-    int64_t ofst_start;
-    int64_t ofst_end;
-
-    int64_t misalign;
-
-    // device or file
-    const char *path;
-
-    // bogus computation
-    long bogus_comp; // # of computation to be operated
-
-    bool verbose;
-
-    bool noop;
-} option;
+static micbench_io_option_t option;
 
 typedef struct {
     // accumulated iowait time
@@ -166,36 +130,36 @@ accum_io_time %lf [sec]\n\
 }
 
 void
-parse_args(int argc, char **argv)
+parse_args(int argc, char **argv, micbench_io_option_t *option)
 {
     char optchar;
     int idx;
 
     // default values
-    option.noop = false;
-    option.multi = 1;
-    option.affinities = NULL;
-    option.timeout = 60;
-    option.bogus_comp = 0;
-    option.read = true;
-    option.write = false;
-    option.seq = true;
-    option.rand = false;
-    option.direct = false;
-    option.blk_sz = 64 * KIBI;
-    option.ofst_start = 0;
-    option.ofst_end = 0;
-    option.misalign = 0;
-    option.verbose = false;
+    option->noop = false;
+    option->multi = 1;
+    option->affinities = NULL;
+    option->timeout = 60;
+    option->bogus_comp = 0;
+    option->read = true;
+    option->write = false;
+    option->seq = true;
+    option->rand = false;
+    option->direct = false;
+    option->blk_sz = 64 * KIBI;
+    option->ofst_start = 0;
+    option->ofst_end = 0;
+    option->misalign = 0;
+    option->verbose = false;
 
     optind = 1;
     while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdWb:s:e:z:c:v")) != -1){
         switch(optchar){
         case 'N': // noop
-            option.noop = true;
+            option->noop = true;
             break;
         case 'm': // multiplicity
-            option.multi = strtol(optarg, NULL, 10);
+            option->multi = strtol(optarg, NULL, 10);
             break;
         case 'a': // affinity
         {
@@ -208,53 +172,53 @@ parse_args(int argc, char **argv)
                     exit(EXIT_FAILURE);
                 }
             }
-            if (option.affinities == NULL){
-                option.affinities = malloc(sizeof(mb_affinity_t *) * option.multi);
-                bzero(option.affinities, sizeof(mb_affinity_t *) * option.multi);
+            if (option->affinities == NULL){
+                option->affinities = malloc(sizeof(mb_affinity_t *) * option->multi);
+                bzero(option->affinities, sizeof(mb_affinity_t *) * option->multi);
             }
             if ((aff = mb_parse_affinity(NULL, optarg)) == NULL){
                 fprintf(stderr, "Invalid argument for -a: %s\n", optarg);
                 exit(EXIT_FAILURE);
             }
             aff->optarg = strdup(optarg);
-            option.affinities[aff->tid] = aff;
+            option->affinities[aff->tid] = aff;
         }
             break;
         case 't': // timeout
-            option.timeout = strtol(optarg, NULL, 10);
+            option->timeout = strtol(optarg, NULL, 10);
             break;
         case 'R': // random
-            option.rand = true;
-            option.seq = false;
+            option->rand = true;
+            option->seq = false;
             break;
         case 'S': // sequential
-            option.seq = true;
-            option.rand = false;
+            option->seq = true;
+            option->rand = false;
             break;
         case 'd': // direct IO
-            option.direct = true;
+            option->direct = true;
             break;
         case 'W': // write
-            option.write = true;
-            option.read = false;
+            option->write = true;
+            option->read = false;
             break;
         case 'b': // block size
-            option.blk_sz = strtol(optarg, NULL, 10);
+            option->blk_sz = strtol(optarg, NULL, 10);
             break;
         case 's': // start block
-            option.ofst_start = strtol(optarg, NULL, 10);
+            option->ofst_start = strtol(optarg, NULL, 10);
             break;
         case 'e': // end block
-            option.ofst_end = strtol(optarg, NULL, 10);
+            option->ofst_end = strtol(optarg, NULL, 10);
             break;
         case 'z': // misalignment
-            option.misalign = strtol(optarg, NULL, 10);
+            option->misalign = strtol(optarg, NULL, 10);
             break;
         case 'c': // # of computation operated between each IO
-            option.bogus_comp = strtol(optarg, NULL, 10);
+            option->bogus_comp = strtol(optarg, NULL, 10);
             break;
         case 'v': // verbose
-            option.verbose = true;
+            option->verbose = true;
             break;
         default:
             fprintf(stderr, "Unknown option '-%c'\n", optchar);
@@ -266,45 +230,45 @@ parse_args(int argc, char **argv)
         fprintf(stderr, "Device or file is not specified.\n");
         exit(EXIT_FAILURE);
     }
-    option.path = argv[optind];
+    option->path = argv[optind];
 
     // check device
 
-    if (option.noop == false) {
-        if (option.read) {
-            if (open(option.path, O_RDONLY) == -1) {
-                fprintf(stderr, "Cannot open %s with O_RDONLY\n", option.path);
+    if (option->noop == false) {
+        if (option->read) {
+            if (open(option->path, O_RDONLY) == -1) {
+                fprintf(stderr, "Cannot open %s with O_RDONLY\n", option->path);
                 goto error;
             }
         } else {
-            if (open(option.path, O_WRONLY) == -1) {
-                fprintf(stderr, "Cannot open %s with O_WRONLY\n", option.path);
+            if (open(option->path, O_WRONLY) == -1) {
+                fprintf(stderr, "Cannot open %s with O_WRONLY\n", option->path);
                 goto error;
             }
         }
     }
 
-    int64_t path_sz = getsize(option.path);
-    if (option.blk_sz * option.ofst_start > path_sz){
+    int64_t path_sz = getsize(option->path);
+    if (option->blk_sz * option->ofst_start > path_sz){
         fprintf(stderr, "Too big --offset-start. Maximum: %ld\n",
-                   path_sz / option.blk_sz);
+                   path_sz / option->blk_sz);
         goto error;
     }
-    if (option.blk_sz * option.ofst_end > path_sz) {
+    if (option->blk_sz * option->ofst_end > path_sz) {
         fprintf(stderr, "Too big --offset-end. Maximum: %ld\n",
-                   path_sz / option.blk_sz);
+                   path_sz / option->blk_sz);
         goto error;
     }
-    if (option.direct && option.blk_sz % 512) {
+    if (option->direct && option->blk_sz % 512) {
         fprintf(stderr, "--direct specified. Block size must be multiples of block size of devices.\n");
         goto error;
     }
-    if (option.direct && getuid() != 0) {
+    if (option->direct && getuid() != 0) {
         fprintf(stderr, "You must be root to use --direct\n");
         goto error;
     }
-    if (option.ofst_end == 0) {
-        option.ofst_end = path_sz / option.blk_sz;
+    if (option->ofst_end == 0) {
+        option->ofst_end = path_sz / option->blk_sz;
     }
 
     return;
@@ -475,7 +439,7 @@ thread_handler(void *arg)
 }
 
 int
-main(int argc, char **argv)
+micbench_io_main(int argc, char **argv)
 {
     th_arg_t *th_args;
     int i;
@@ -493,7 +457,7 @@ main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    parse_args(argc, argv);
+    parse_args(argc, argv, &option);
 
     if (option.noop == true){
         print_option();
@@ -574,5 +538,3 @@ main(int argc, char **argv)
 
     return 0;
 }
-
-

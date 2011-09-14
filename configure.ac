@@ -10,7 +10,8 @@ AM_INIT_AUTOMAKE($PACKAGE_NAME, $PACKAGE_VERSION)
 AC_PROG_LIBTOOL
 
 AC_CONFIG_FILES([Makefile
-	src/Makefile])
+	src/Makefile
+	test/Makefile])
 
 dnl ******************************
 dnl Check for standard headers
@@ -89,6 +90,18 @@ if lsb_release --id|grep "\(Ubuntu\|Debian\)"; then
   fi
 fi
 
+dnl **************************************************************
+dnl Check for Cutter
+dnl **************************************************************
+
+AC_CHECK_CUTTER
+
+AM_CONDITIONAL([WITH_CUTTER], [test "$ac_cv_use_cutter" != "no"])
+if test "$ac_cv_use_cutter" != "no"; then
+  AC_DEFINE(WITH_CUTTER, 1, [Define to 1 if you use Cutter])
+fi
+
+
 AC_OUTPUT
 
 echo
@@ -105,4 +118,5 @@ echo
 echo "== optional =="
 echo "  OProfile  : $OPCONTROL"
 echo "    vmlinux : $VMLINUX"
+echo "     Cutter : $CUTTER"
 echo

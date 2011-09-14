@@ -24,3 +24,6 @@
 /src/micbench-lock
 /src/micbench-proto
 /src/micbench-lock-mfence-inner.c
+/src/.libs/*
+/test/.deps/*
+/test/.libs/*
