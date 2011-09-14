@@ -79,6 +79,9 @@ test_parse_args_rwmix_mode(void)
 void
 test_mb_read_or_write(void)
 {
+    int i;
+    double write_ratio;
+
     // always do read
     argv[1] = dummy_file;
     parse_args(2, argv, &option);
@@ -97,12 +100,37 @@ test_mb_read_or_write(void)
     argv[3] = dummy_file;
     parse_args(4, argv, &option);
     mb_set_option(&option);
-    int i;
-    double write_ratio = 0.0;
+    write_ratio = 0.0;
     for(i = 0; i < 100000; i++){
         if (MB_DO_WRITE == mb_read_or_write())
             write_ratio += 1.0;
     }
     write_ratio /= 100000;
     cut_assert_equal_double(0.5, 0.001, write_ratio);
+
+    argv[1] = "-M";
+    argv[2] = "0.0";
+    argv[3] = dummy_file;
+    parse_args(4, argv, &option);
+    mb_set_option(&option);
+    write_ratio = 0.0;
+    for(i = 0; i < 100000; i++){
+        if (MB_DO_WRITE == mb_read_or_write())
+            write_ratio += 1.0;
+    }
+    write_ratio /= 100000;
+    cut_assert_equal_double(0.0, 0.001, write_ratio);
+
+    argv[1] = "-M";
+    argv[2] = "1.0";
+    argv[3] = dummy_file;
+    parse_args(4, argv, &option);
+    mb_set_option(&option);
+    write_ratio = 0.0;
+    for(i = 0; i < 100000; i++){
+        if (MB_DO_WRITE == mb_read_or_write())
+            write_ratio += 1.0;
+    }
+    write_ratio /= 100000;
+    cut_assert_equal_double(1.0, 0.001, write_ratio);
 }

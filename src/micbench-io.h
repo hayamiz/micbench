@@ -53,7 +53,7 @@ int parse_args(int argc, char **argv, micbench_io_option_t *option);
 #define mb_read_or_write() \
     (option.read == true ? MB_DO_READ : \
      option.write == true ? MB_DO_WRITE : \
-     (drand48() < option.rwmix ? MB_DO_READ : \
+     (option.rwmix < drand48() ? MB_DO_READ :   \
       MB_DO_WRITE))
 
 
