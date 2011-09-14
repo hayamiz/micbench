@@ -94,7 +94,9 @@ dnl **************************************************************
 dnl Check for Cutter
 dnl **************************************************************
 
-AC_CHECK_CUTTER
+m4_ifdef([AC_CHECK_CUTTER],
+         [AC_CHECK_CUTTER],
+         [ac_cv_use_cutter="no"])
 
 AM_CONDITIONAL([WITH_CUTTER], [test "$ac_cv_use_cutter" != "no"])
 if test "$ac_cv_use_cutter" != "no"; then
