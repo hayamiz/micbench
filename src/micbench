@@ -364,6 +364,7 @@ class IoCommand < BaseCommand
     @options[:misalign] = 0
     @options[:verbose] = false
     @options[:debug] = false
+    @options[:rwmix] = 0.0
 
     @parser.banner = "Usage: #{File.basename($0, '.*')} #{self.command_name} [options] device_or_file"
 
@@ -400,6 +401,11 @@ class IoCommand < BaseCommand
     @parser.on('-W', '--write',
               "Write operation (default: read operation)") do
       @options[:mode] = :write
+    end
+    @parser.on('-M', '--rwmix RATIO',
+               "Read/Write mixture mode. 0.0 ... 100% read, 1.0 ... 100% write (default: 0.0)") do |ratio|
+      @options[:rwmix] = [[ratio.to_f, 0.0].max, 1.0].min
+      @options[:mode] = :rwmix
     end
     @parser.on('-S', '--seq',
               "Sequential access mode (default mode)") do
@@ -492,7 +498,9 @@ class IoCommand < BaseCommand
                         (@options[:pattern] == :rand ? "-R" : "-S"),
                         "-c", @options[:bogus_comp],
                         (@options[:direct] ? "-d" : []),
-                        (@options[:mode] == :write ? "-W" : []),
+                        (@options[:mode] == :write ? "-W" :
+                         @options[:mode] == :rwmix ? ["-M", @options[:rwmix].to_s] :
+                         []),
                         "-b", @options[:blocksize],
                         "-s", @options[:offset_start],
                         "-e", @options[:offset_end],
