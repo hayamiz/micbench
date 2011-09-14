@@ -13,6 +13,7 @@ typedef struct {
     bool direct;
     bool read;
     bool write;
+    double rwmix;
 
     // thread affinity assignment
     mb_affinity_t **affinities;
@@ -41,7 +42,21 @@ typedef struct {
     bool noop;
 } micbench_io_option_t;
 
-void parse_args(int argc, char **argv, micbench_io_option_t *option);
+typedef enum {
+    MB_DO_READ,
+    MB_DO_WRITE,
+} mb_io_mode_t;
+
+void mb_set_option(micbench_io_option_t *option);
+int parse_args(int argc, char **argv, micbench_io_option_t *option);
+
+#define mb_read_or_write() \
+    (option.read == true ? MB_DO_READ : \
+     option.write == true ? MB_DO_WRITE : \
+     (drand48() < option.rwmix ? MB_DO_READ : \
+      MB_DO_WRITE))
+
+
 int micbench_io_main(int argc, char **argv);
 
 #endif

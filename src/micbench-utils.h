@@ -8,9 +8,13 @@
 #include <sys/time.h>
 #include <sched.h>
 #include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/ioctl.h>
 #include <unistd.h>
 #include <inttypes.h>
 #include <string.h>
+#include <fcntl.h>
+#include <linux/fs.h>
 
 typedef struct {
     pid_t tid;
@@ -64,6 +68,8 @@ long   mb_elapsed_usec_from(struct timeval *tv);
 
 unsigned long mb_rand_range_ulong (unsigned long from, unsigned long to);
 long          mb_rand_range_long  (long from, long to);
+
+int64_t mb_getsize(const char *path);
 
 /*
   <set> := <consecutive_set> | <consecutive_set> '+' <set>

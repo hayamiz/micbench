@@ -11,7 +11,9 @@ AC_PROG_LIBTOOL
 
 AC_CONFIG_FILES([Makefile
 	src/Makefile
-	test/Makefile])
+	test/Makefile
+	test/lib/Makefile
+	test/fixtures/Makefile])
 
 dnl ******************************
 dnl Check for standard headers
@@ -103,6 +105,21 @@ if test "$ac_cv_use_cutter" != "no"; then
   AC_DEFINE(WITH_CUTTER, 1, [Define to 1 if you use Cutter])
 fi
 
+dnl **************************************************************
+dnl Check for GLib
+dnl **************************************************************
+
+PKG_CHECK_MODULES([GLIB],
+                  [glib-2.0 >= 2.12.3],
+                  [ac_glib_2_0_available="yes"],
+                  [ac_glib_2_0_available="no"])
+
+if test "$ac_cv_use_cutter" != "no"; then
+  if test "$ac_glib_2_0_available" = "no"; then
+    AC_MSG_ERROR([GLib is required for testing with Cutter.])
+  fi
+fi
+AM_CONDITIONAL([WITH_GLIB], [test "$ac_glib_2_0_available" = "yes"])
 
 AC_OUTPUT
 
@@ -121,4 +138,5 @@ echo "== optional =="
 echo "  OProfile  : $OPCONTROL"
 echo "    vmlinux : $VMLINUX"
 echo "     Cutter : $CUTTER"
+echo "       GLib : $ac_glib_2_0_available"
 echo

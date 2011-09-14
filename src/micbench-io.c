@@ -38,53 +38,6 @@ typedef struct {
 } th_arg_t;
 
 
-int64_t
-getsize(const char *path)
-{
-    int fd;
-    int64_t size;
-    struct stat statbuf;
-
-    size = -1;
-
-    if ((fd = open(path, O_RDONLY)) == -1){
-        perror("Failed to open device or file\n");
-        return -1;
-    }
-    if (fstat(fd, &statbuf) == -1){
-        perror("fstat(2) failed.\n");
-        goto finally;
-    }
-
-    if (S_ISREG(statbuf.st_mode)){
-        size = statbuf.st_size;
-        goto finally;
-    }
-
-    if (S_ISBLK(statbuf.st_mode)){
-        uint64_t dev_sz;
-        // if(ioctl(fd, BLKGETSIZE, &blk_num) == -1){
-        //     perror("ioctl(BLKGETSIZE) failed\n");
-        //     goto finally;
-        // }
-        // if(ioctl(fd, BLKSSZGET, &blk_sz) == -1){
-        //     perror("ioctl(BLKSSZGET) failed\n");
-        //     goto finally;
-        // }
-        if (ioctl(fd, BLKGETSIZE64, &dev_sz) == -1){
-            perror("ioctl(BLKGETSIZE64) failed\n");
-            goto finally;
-        }
-
-        // size = blk_num * blk_sz; // see <linux/fs.h>
-        size = dev_sz;
-    }
-
-finally:
-    close(fd);
-    return size;
-}
-
 void
 print_option()
 {
@@ -104,7 +57,8 @@ misalign        %ld\n\
             option.multi,
             option.path,
             (option.seq ? "sequential" : "random"),
-            (option.read ? "read" : "write"),
+            (option.read ? "read" :
+             option.write ? "write" : "mix"),
             (option.direct ? "yes" : "no"),
             option.timeout,
             option.bogus_comp,
@@ -129,7 +83,7 @@ accum_io_time %lf [sec]\n\
             result->iowait_time);
 }
 
-void
+int
 parse_args(int argc, char **argv, micbench_io_option_t *option)
 {
     char optchar;
@@ -143,6 +97,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->bogus_comp = 0;
     option->read = true;
     option->write = false;
+    option->rwmix = 0.0;
     option->seq = true;
     option->rand = false;
     option->direct = false;
@@ -153,7 +108,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->verbose = false;
 
     optind = 1;
-    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdWb:s:e:z:c:v")) != -1){
+    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdWM:b:s:e:z:c:v")) != -1){
         switch(optchar){
         case 'N': // noop
             option->noop = true;
@@ -169,7 +124,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
             for(idx = optind; idx < argc; idx++){
                 if (strcmp("-m", argv[idx]) == 0) {
                     perror("-m option must be specified before -a.\n");
-                    exit(EXIT_FAILURE);
+                    goto error;
                 }
             }
             if (option->affinities == NULL){
@@ -178,7 +133,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
             }
             if ((aff = mb_parse_affinity(NULL, optarg)) == NULL){
                 fprintf(stderr, "Invalid argument for -a: %s\n", optarg);
-                exit(EXIT_FAILURE);
+                goto error;
             }
             aff->optarg = strdup(optarg);
             option->affinities[aff->tid] = aff;
@@ -202,6 +157,13 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
             option->write = true;
             option->read = false;
             break;
+        case 'M': // read/write mixture (0 = 100% read, 1.0 = 100% write)
+            option->rwmix = strtod(optarg, NULL);
+            option->read = false;
+            option->write = false;
+            if (option->rwmix < 0)   option->rwmix = 0.0;
+            if (option->rwmix > 1.0) option->rwmix = 1.0;
+            break;
         case 'b': // block size
             option->blk_sz = strtol(optarg, NULL, 10);
             break;
@@ -222,13 +184,13 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
             break;
         default:
             fprintf(stderr, "Unknown option '-%c'\n", optchar);
-            exit(EXIT_FAILURE);
+            goto error;
         }
     }
 
     if (optind >= argc) {
         fprintf(stderr, "Device or file is not specified.\n");
-        exit(EXIT_FAILURE);
+        goto error;
     }
     option->path = argv[optind];
 
@@ -248,7 +210,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
         }
     }
 
-    int64_t path_sz = getsize(option->path);
+    int64_t path_sz = mb_getsize(option->path);
     if (option->blk_sz * option->ofst_start > path_sz){
         fprintf(stderr, "Too big --offset-start. Maximum: %ld\n",
                    path_sz / option->blk_sz);
@@ -271,9 +233,15 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
         option->ofst_end = path_sz / option->blk_sz;
     }
 
-    return;
+    return 0;
 error:
-    exit(EXIT_FAILURE);
+    return 1;
+}
+
+void
+mb_set_option(micbench_io_option_t *option_)
+{
+    memcpy(&option, option_, sizeof(micbench_io_option_t));
 }
 
 static inline ssize_t
@@ -359,9 +327,9 @@ do_iostress(th_arg_t *th_arg)
                 }
 
                 GETTIMEOFDAY(&timer);
-                if (option.read) {
+                if (mb_read_or_write() == MB_DO_READ) {
                     iostress_readall(fd, buf, option.blk_sz);
-                } else if (option.write) {
+                } else {
                     iostress_writeall(fd, buf, option.blk_sz);
                 }
                 iowait_time += mb_elapsed_time_from(&timer);
@@ -389,6 +357,9 @@ do_iostress(th_arg_t *th_arg)
                     iostress_readall(fd, buf, option.blk_sz);
                 } else if (option.write) {
                     iostress_writeall(fd, buf, option.blk_sz);
+                } else {
+                    fprintf(stderr, "Only read or write can be specified in seq.");
+                    exit(EXIT_FAILURE);
                 }
                 iowait_time += mb_elapsed_time_from(&timer);
                 io_count ++;
@@ -457,7 +428,10 @@ micbench_io_main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    parse_args(argc, argv, &option);
+    if (parse_args(argc, argv, &option) != 0) {
+        fprintf(stderr, "Argument Error.\n");
+        exit(EXIT_FAILURE);
+    }
 
     if (option.noop == true){
         print_option();

@@ -1,6 +1,7 @@
 #!/bin/sh
 
 export BASE_DIR="`dirname $0`"
+export TEST_DIR="$(readlink -f $(dirname $0))"
 top_dir="$BASE_DIR/.."
 
 if test -z "$NO_MAKE"; then
@@ -11,4 +12,8 @@ if test -z "$CUTTER"; then
     CUTTER="`make -s -C $BASE_DIR echo-cutter`"
 fi
 
-$CUTTER -s $BASE_DIR "$@" $BASE_DIR
+if ! test -z "$DEBUG"; then
+    WRAPPER="gdb --args"
+fi
+
+$WRAPPER $CUTTER -s $BASE_DIR "$@" $BASE_DIR

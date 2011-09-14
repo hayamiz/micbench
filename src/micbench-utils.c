@@ -191,3 +191,50 @@ mb_rand_range_long(long from, long to)
 {
     return ((long) ((to - from) * drand48())) + from;
 }
+
+int64_t
+mb_getsize(const char *path)
+{
+    int fd;
+    int64_t size;
+    struct stat statbuf;
+
+    size = -1;
+
+    if ((fd = open(path, O_RDONLY)) == -1){
+        perror("Failed to open device or file\n");
+        return -1;
+    }
+    if (fstat(fd, &statbuf) == -1){
+        perror("fstat(2) failed.\n");
+        goto finally;
+    }
+
+    if (S_ISREG(statbuf.st_mode)){
+        size = statbuf.st_size;
+        goto finally;
+    }
+
+    if (S_ISBLK(statbuf.st_mode)){
+        uint64_t dev_sz;
+        // if(ioctl(fd, BLKGETSIZE, &blk_num) == -1){
+        //     perror("ioctl(BLKGETSIZE) failed\n");
+        //     goto finally;
+        // }
+        // if(ioctl(fd, BLKSSZGET, &blk_sz) == -1){
+        //     perror("ioctl(BLKSSZGET) failed\n");
+        //     goto finally;
+        // }
+        if (ioctl(fd, BLKGETSIZE64, &dev_sz) == -1){
+            perror("ioctl(BLKGETSIZE64) failed\n");
+            goto finally;
+        }
+
+        // size = blk_num * blk_sz; // see <linux/fs.h>
+        size = dev_sz;
+    }
+
+finally:
+    close(fd);
+    return size;
+}
