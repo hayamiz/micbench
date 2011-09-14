@@ -202,9 +202,14 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
                 fprintf(stderr, "Cannot open %s with O_RDONLY\n", option->path);
                 goto error;
             }
-        } else {
+        } else if (option->write) {
             if (open(option->path, O_WRONLY) == -1) {
                 fprintf(stderr, "Cannot open %s with O_WRONLY\n", option->path);
+                goto error;
+            }
+        } else {
+            if (open(option->path, O_RDWR) == -1) {
+                fprintf(stderr, "Cannot open %s with O_RDWR\n", option->path);
                 goto error;
             }
         }
@@ -445,8 +450,10 @@ micbench_io_main(int argc, char **argv)
 
     if (option.read) {
         flags = O_RDONLY;
-    } else {
+    } else if (option.write) {
         flags = O_WRONLY;
+    } else {
+        flags = O_RDWR;
     }
     if (option.direct) {
         flags |= O_DIRECT;
