@@ -55,12 +55,9 @@ AC_CHECK_LIB(numa, numa_available, [have_libnuma=yes], [have_libnuma=no])
 if ! test "$have_numaif_h" = "yes"; then
   AC_MSG_ERROR([numaif.h is required.])
 fi
-if test "$have_numa_h" = "yes"; then
-  AC_DEFINE([HAVE_NUMA_H], [1], [Define if numa.h exists.])
-else
+if ! test "$have_numa_h" = "yes"; then
   AC_MSG_ERROR([numa.h is required.])
 fi
-AC_DEFINE([HAVE_NUMA_H], [1], [Define if numa.h exists.])
 
 if test "$have_libnuma" = "yes"; then
   LIBS="$LIBS -lnuma"
