@@ -31,6 +31,17 @@ micbench_proto_LDADD =  libmicbench-utils.la
 micbench_proto_LDFLAGS = \
 	-pthread
 
+if WITH_BLKTRACE
+noinst_LTLIBRARIES += libmicbench-btreplay.la
+bin_PROGRAMS += micbench-btreplay
+
+libmicbench_btreplay_la_SOURCES = micbench-btreplay.c
+
+micbench_btreplay_SOURCES = micbench-btreplay-main.c
+micbench_btreplay_LDADD = libmicbench-btreplay.la libmicbench-utils.la
+micbench_btreplay_LDFLAGS = -pthread
+endif
+
 CLEANFILES = micbench-mem-inner.c micbench-mem-inner-64.c micbench-mem-inner-rand.c __micbench-io __micbench-mem
 
 __micbench-%: micbench-%

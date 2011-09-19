@@ -73,6 +73,17 @@ if test "$NUMACTL" = "none"; then
 fi
 
 dnl ******************************
+dnl Check for numactl
+dnl ******************************
+
+AC_PATH_PROG(BLKTRACE, blktrace, none)
+AC_PATH_PROG(BLKPARSE, blkparse, none)
+if test "$BLKTRACE" != "none" && test "$BLKPARSE" != "none"; then
+  AC_DEFINE([HAVE_BLKTRACE], [1], [Define to 1 if blktrace command is available])
+fi
+AM_CONDITIONAL([WITH_BLKTRACE], [test "$BLKTRACE" != "none"])
+
+dnl ******************************
 dnl Check for OProfile
 dnl ******************************
 
@@ -132,6 +143,8 @@ echo "  Ruby    : $RUBY"
 echo "  numactl : $NUMACTL"
 echo
 echo "== optional =="
+echo "   blktrace : $BLKTRACE"
+echo "   blkparse : $BLKPARSE"
 echo "  OProfile  : $OPCONTROL"
 echo "    vmlinux : $VMLINUX"
 echo "     Cutter : $CUTTER"

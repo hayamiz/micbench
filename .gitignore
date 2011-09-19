@@ -29,3 +29,4 @@ Makefile
 /*/*/.deps/*
 /*/*/.libs/*
 /test/fixtures/*.sparse
+/src/micbench-btreplay
