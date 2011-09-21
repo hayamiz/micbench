@@ -118,7 +118,7 @@ dnl Check for GLib
 dnl **************************************************************
 
 PKG_CHECK_MODULES([GLIB],
-                  [glib-2.0 >= 2.12.3],
+                  [glib-2.0 gthread-2.0],
                   [ac_glib_2_0_available="yes"],
                   [ac_glib_2_0_available="no"])
 

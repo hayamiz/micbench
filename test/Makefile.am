@@ -12,7 +12,7 @@ noinst_LTLIBRARIES =				\
 	test-micbench-io.la
 
 LDFLAGS = -module -rpath $(libdir) -avoid-version -no-undefined	\
-	 $(GLIB_LDFLAGS)
+	$(GLIB_LIBS)
 INCLUDES =					\
 	 $(CUTTER_CFLAGS)			\
 	 $(GLIB_CFLAGS)				\
@@ -26,6 +26,14 @@ LIBS = $(CUTTER_LIBS)					\
 
 test_micbench_utils_la_SOURCES = test-micbench-utils.c
 test_micbench_io_la_SOURCES = test-micbench-io.c
+
+if WITH_BLKTRACE
+noinst_LTLIBRARIES += test-micbench-btreplay.la
+
+test_micbench_btreplay_la_SOURCES = test-micbench-btreplay.c
+
+LIBS += $(top_builddir)/src/libmicbench-btreplay.la
+endif
 
 echo-cutter:
 	@echo $(CUTTER)
