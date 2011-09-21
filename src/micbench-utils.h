@@ -96,4 +96,52 @@ mb_read_tsc(void)
     return ret;
 }
 
+static inline ssize_t
+mb_readall(int fd, char *buf, size_t size)
+{
+    size_t sz = size;
+    ssize_t ret;
+
+    for(;;) {
+        if ((ret = read(fd, buf, sz)) == -1){
+            printf("fd=%d, buf=%p, sz=%ld\n", fd, buf, sz);
+            perror("mb_readall:read");
+            exit(EXIT_FAILURE);
+        }
+    
+        if (ret < sz) {
+            sz -= ret;
+            buf += ret;
+        } else {
+            break;
+        }
+    }
+
+    return size;
+}
+
+static inline ssize_t
+mb_writeall(int fd, const char *buf, size_t size)
+{
+    size_t sz = size;
+    ssize_t ret;
+
+    for(;;) {
+        if ((ret = write(fd, buf, sz)) == -1){
+            perror("mb_writeall:write");
+            exit(EXIT_FAILURE);
+        }
+    
+        if (ret < sz) {
+            sz -= ret;
+            buf += ret;
+        } else {
+            break;
+        }
+    }
+
+    return size;
+}
+
+
 #endif

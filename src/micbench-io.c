@@ -249,53 +249,6 @@ mb_set_option(micbench_io_option_t *option_)
     memcpy(&option, option_, sizeof(micbench_io_option_t));
 }
 
-static inline ssize_t
-iostress_readall(int fd, char *buf, size_t size)
-{
-    size_t sz = size;
-    ssize_t ret;
-
-    while(true) {
-        if ((ret = read(fd, buf, sz)) == -1){
-            printf("fd=%d, buf=%p, sz=%ld\n", fd, buf, sz);
-            perror("iostress_readall:read");
-            exit(EXIT_FAILURE);
-        }
-    
-        if (ret < sz) {
-            sz -= ret;
-            buf += ret;
-        } else {
-            break;
-        }
-    }
-
-    return size;
-}
-
-static inline ssize_t
-iostress_writeall(int fd, const char *buf, size_t size)
-{
-    size_t sz = size;
-    ssize_t ret;
-
-    while(true) {
-        if ((ret = write(fd, buf, sz)) == -1){
-            perror("iostress_writeall:write");
-            exit(EXIT_FAILURE);
-        }
-    
-        if (ret < sz) {
-            sz -= ret;
-            buf += ret;
-        } else {
-            break;
-        }
-    }
-
-    return size;
-}
-
 void
 do_iostress(th_arg_t *th_arg)
 {
@@ -333,9 +286,9 @@ do_iostress(th_arg_t *th_arg)
 
                 GETTIMEOFDAY(&timer);
                 if (mb_read_or_write() == MB_DO_READ) {
-                    iostress_readall(fd, buf, option.blk_sz);
+                    mb_readall(fd, buf, option.blk_sz);
                 } else {
-                    iostress_writeall(fd, buf, option.blk_sz);
+                    mb_writeall(fd, buf, option.blk_sz);
                 }
                 iowait_time += mb_elapsed_time_from(&timer);
                 io_count ++;
@@ -359,9 +312,9 @@ do_iostress(th_arg_t *th_arg)
             for(i = 0;i < 100; i++){
                 GETTIMEOFDAY(&timer);
                 if (option.read) {
-                    iostress_readall(fd, buf, option.blk_sz);
+                    mb_readall(fd, buf, option.blk_sz);
                 } else if (option.write) {
-                    iostress_writeall(fd, buf, option.blk_sz);
+                    mb_writeall(fd, buf, option.blk_sz);
                 } else {
                     fprintf(stderr, "Only read or write can be specified in seq.");
                     exit(EXIT_FAILURE);
