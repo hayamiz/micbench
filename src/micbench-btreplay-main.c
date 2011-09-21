@@ -1,7 +1,8 @@
 
+#include "micbench-btreplay.h"
+
 int
 main(int argc, char **argv)
 {
-
-    return 0;
+    return mb_btreplay_main(argc, argv);
 }

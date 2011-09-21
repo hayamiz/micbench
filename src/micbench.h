@@ -1,6 +1,8 @@
 #ifndef MICBENCH_H
 #define MICBENCH_H
 
+#define _GNU_SOURCE
+
 #include "config.h"
 
 #include <stdio.h>
