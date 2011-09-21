@@ -14,6 +14,8 @@ fi
 
 if ! test -z "$DEBUG"; then
     WRAPPER="gdb --args"
+elif ! test -z "$MEMCHECK"; then
+    WRAPPER="valgrind --leak-check=summary"
 fi
 
 $WRAPPER $CUTTER -s $BASE_DIR "$@" $BASE_DIR
