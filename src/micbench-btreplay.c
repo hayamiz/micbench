@@ -16,6 +16,27 @@ thread_handler(void *arg)
     return NULL;
 }
 
+static void *
+monitor_thread_handler(void *ptr)
+{
+    int i;
+    GAsyncQueue *ioreq_queue;
+
+    ioreq_queue = (GAsyncQueue *) ptr;
+    for(;;){
+        for(i = 0; i < 10; i++) {
+            if (control.stop == true) {
+                return NULL;
+            }
+            sleep(1);
+        }
+        fprintf(stderr, "[monitor] ioreq queue length: %d\n",
+                g_async_queue_length(ptr));
+    }
+
+    return NULL;
+}
+
 static void
 do_thread_job(mb_btreplay_thread_arg_t *arg)
 {
@@ -40,7 +61,7 @@ do_thread_job(mb_btreplay_thread_arg_t *arg)
 
     endpos = -1;
     bufsz = 64 * KIBI;
-    buf = malloc(bufsz);
+    buf = memalign(KIBI, bufsz);
 
     g_async_queue_ref(arg->ioreq_queue);
     for(;;) {
@@ -58,10 +79,11 @@ do_thread_job(mb_btreplay_thread_arg_t *arg)
             ofst = ioreq->trace.sector * 512;
             sz = ioreq->trace.bytes;
             if (sz > bufsz) {
+                free(buf);
                 bufsz = sz;
-                buf = realloc(buf, bufsz);
+                buf = memalign(KIBI, bufsz);
             }
-            if (ofst != endpos) {
+            if (ofst != endpos && false) {
                 lseek64(fd, ofst, SEEK_SET);
                 if (option.vverbose)
                     printf("[tid: %d] lseek64 to %ld\n",
@@ -69,10 +91,17 @@ do_thread_job(mb_btreplay_thread_arg_t *arg)
                            ofst);
             }
             if (option.vverbose)
-                printf("[tid: %d] %s io issue at %ld + %ld\n",
+                printf("[tid: %d] %s on fd:%d at %ld + %ld\n",
                        arg->tid,
                        (w == true ? "write" : "read"),
-                       ofst, sz);
+                       fd,
+                       ofst,
+                       sz);
+            if (w == false) { // do read
+                mb_readall(fd, buf, sz);
+            } else { // do write
+                mb_writeall(fd, buf, sz);
+            }
             endpos = ofst + sz;
         }
 
@@ -167,6 +196,7 @@ mb_fetch_blk_io_trace(FILE *file, struct blk_io_trace *trace)
 void
 mb_btreplay_init()
 {
+    g_thread_init(NULL);
     control.stop = false;
 }
 
@@ -175,12 +205,13 @@ mb_btreplay_main(int argc, char **argv)
 {
     FILE *file;
     pthread_t *threads;
+    pthread_t monitor_thread;
     mb_btreplay_thread_arg_t *targs;
     GAsyncQueue *ioreq_queue;
     mb_btreplay_ioreq_t *ioreq;
     int i;
 
-    g_thread_init(NULL);
+    mb_btreplay_init();
 
     if (mb_btreplay_parse_args(argc, argv, &option) != 0){
         fprintf(stderr, "Argument error.\n");
@@ -201,6 +232,9 @@ mb_btreplay_main(int argc, char **argv)
             perror("failed to create thread.");
             exit(EXIT_FAILURE);
         }
+    }
+    if (option.verbose) {
+        pthread_create(&monitor_thread, NULL, monitor_thread_handler, ioreq_queue);
     }
 
     file = fopen(option.btdump_path, "r");
@@ -229,6 +263,10 @@ mb_btreplay_main(int argc, char **argv)
             perror("failed to join thread.");
             exit(EXIT_FAILURE);
         }
+    }
+    control.stop = true;
+    if (option.verbose) {
+        pthread_join(monitor_thread, NULL);
     }
 
     free(threads);
