@@ -20,7 +20,7 @@ void
 cut_setup(void)
 {
     cut_set_fixture_data_dir(mb_test_get_fixtures_dir(), NULL);
-    dummy_file = cut_build_fixture_data_path("1MB.sparse", NULL);
+    dummy_file = (char *) cut_build_fixture_path("1MB.sparse", NULL);
 
     // set dummy execution file name in argv for parse_args
     argv[0] = "./dummy";
