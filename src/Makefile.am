@@ -1,5 +1,5 @@
 
-AM_CFLAGS = -g -Wall
+AM_CFLAGS = -g -Wall -msse -msse2
 LDFLAGS = -no-undefined
 INCLUDES = 
 
@@ -7,7 +7,10 @@ noinst_LTLIBRARIES =				\
 	libmicbench-io.la			\
 	libmicbench-utils.la
 
-bin_PROGRAMS = micbench-io micbench-mem micbench-lock micbench-proto
+bin_PROGRAMS = micbench-io micbench-mem micbench-proto
+if WITH_X86_64
+bin_PROGRAMS += micbench-lock
+endif
 
 libmicbench_utils_la_SOURCES = micbench-utils.c
 
@@ -22,10 +25,15 @@ micbench_mem_LDADD =  libmicbench-utils.la
 micbench_mem_LDFLAGS = \
 	-pthread
 
+if WITH_X86_64
 micbench_lock_SOURCES =  micbench-lock.c
 micbench_lock_LDADD =  libmicbench-utils.la
 micbench_lock_LDFLAGS = \
 	-pthread
+micbench-lock.c: micbench-lock-mfence-inner.c
+micbench-lock-mfence-inner.c: Makefile
+	for i in $$(seq 128); do echo "\"incq	(%%rax);\\n\""; echo "\"mfence\\n\""; done > $@
+endif
 
 micbench_proto_SOURCES =  micbench-proto.c
 micbench_proto_LDADD =  libmicbench-utils.la
@@ -56,15 +64,19 @@ all: __micbench-io __micbench-mem
 
 micbench-mem.c: micbench-mem-inner.c micbench-mem-inner-rand.c micbench-mem-inner-64.c
 
-micbench-lock.c: micbench-lock-mfence-inner.c
-
+if WITH_X86_64
 micbench-mem-inner.c: ./gen-mem-innerloop.rb
 	ruby $^ > $@
 micbench-mem-inner-64.c: ./gen-mem-innerloop.rb
 	ruby $^ --short 64 > $@
-
 micbench-mem-inner-rand.c: ./gen-mem-innerloop.rb
 	ruby $^ --random > $@
-
-micbench-lock-mfence-inner.c: Makefile
-	for i in $$(seq 128); do echo "\"incq	(%%rax);\\n\""; echo "\"mfence\\n\""; done > $@
+endif
+if WITH_X86
+micbench-mem-inner.c: ./gen-mem-innerloop.rb
+	ruby $^ --32 > $@
+micbench-mem-inner-64.c: ./gen-mem-innerloop.rb
+	ruby $^ --32 --short 64 > $@
+micbench-mem-inner-rand.c: ./gen-mem-innerloop.rb
+	ruby $^ --32 --random > $@
+endif

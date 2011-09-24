@@ -20,18 +20,33 @@ def parse_args(argv)
     opt[:random] = true
   end
 
+  opt[:x86_32bit] = false
+  parser.on('--32') do
+    opt[:x86_32bit] = true
+  end
+
   parser.parse!(argv)
   opt
 end
 
 def main(argv)
-  opt = parse_args(argv)
+  $option = parse_args(argv)
 
-  if opt[:random]
+  if $option[:x86_32bit]
+    $arch_ax = "eax"
+    $arch_mov = "movl"
+    $arch_add = "addl"
+  else
+    $arch_ax = "rax"
+    $arch_mov = "movq"
+    $arch_add = "addq"
+  end
+
+  if $option[:random]
     generate_rand($stdout)
   else
-    if opt[:short]
-      generate_seq_short($stdout, opt[:short])
+    if $option[:short]
+      generate_seq_short($stdout, $option[:short])
     else
       generate_seq($stdout)
     end
@@ -49,14 +64,14 @@ __asm__ volatile(
 EOS
   num_ops.times do |idx|
     out.puts <<EOS
-"movq	(%%rax), %%rax\\n"
+"#{$arch_mov}	(%%#{$arch_ax}), %%#{$arch_ax}\\n"
 
 EOS
 
 #     out.puts <<EOS
-# "movq	(%%rax), %%r8\\n"
-# // "movq	%%r8, (%%rax)\\n"
-# "movq	%%r8, %%rax\\n"
+# "#{$arch_mov}	(%%#{$arch_ax}), %%r8\\n"
+# // "#{$arch_mov}	%%r8, (%%#{$arch_ax})\\n"
+# "#{$arch_mov}	%%r8, %%#{$arch_ax}\\n"
 # 
 # EOS
   end
@@ -72,7 +87,11 @@ end
 def generate_seq(out)
   region_size = 1024 # bytes
   stride_size = 16 # 128bit-wide SSE register
-  num_register = 16 # xmm* SSE registers
+  if $option[:x86_32bit]
+    num_register = 8 # xmm* SSE registers
+  else
+    num_register = 16 # xmm* SSE registers
+  end
   out.puts <<EOS
 #define	MEM_INNER_LOOP_SEQ_NUM_OPS	#{(region_size / stride_size)}
 #define	MEM_INNER_LOOP_SEQ_REGION_SIZE	#{(region_size)}
@@ -84,14 +103,14 @@ EOS
     rnum = idx % num_register
     ofst = idx * stride_size
     out.puts <<EOS
-"movdqa	#{ofst}(%%rax), %%xmm#{rnum}\\n"
+"movdqa	#{ofst}(%%#{$arch_ax}), %%xmm#{rnum}\\n"
 
 EOS
   end
 
-  destructed_regs = (0..15).map{|i| sprintf('"%%xmm%d"', i)}.join(", ")
+  destructed_regs = (0..(num_register - 1)).map{|i| sprintf('"%%xmm%d"', i)}.join(", ")
   out.puts <<EOS
-"addq	$#{region_size}, %0\\n"
+"#{$arch_add}	$#{region_size}, %0\\n"
 : "=a" (ptr)
 : "0" (ptr)
 : #{destructed_regs});
@@ -122,7 +141,7 @@ EOS
       rnum = idx % num_register
       ofst = idx * stride_size
       out.puts <<EOS
-"movdqa	#{ofst}(%%rax), %%xmm#{rnum}\\n"
+"movdqa	#{ofst}(%%#{$arch_ax}), %%xmm#{rnum}\\n"
 
 EOS
     end
@@ -130,7 +149,7 @@ EOS
 
   destructed_regs = (0..(num_register - 1)).map{|i| sprintf('"%%xmm%d"', i)}.join(", ")
   out.puts <<EOS
-"addq	$#{region_size}, %0\\n"
+"#{$arch_add}	$#{region_size}, %0\\n"
 : "=a" (ptr)
 : "0" (ptr)
 : #{destructed_regs});

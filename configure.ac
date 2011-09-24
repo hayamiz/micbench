@@ -16,6 +16,35 @@ AC_CONFIG_FILES([Makefile
 	test/fixtures/Makefile])
 
 dnl ******************************
+dnl Check for CPU arch.
+dnl ******************************
+
+AC_PATH_PROG(ARCH, arch, none)
+if test "$ARCH" = "none"; then
+  AC_MSG_ERROR([arch(1) is required to detect CPU arch.])
+fi
+case $(arch) in
+x86_64)
+    ac_arch=x86_64
+    ;;
+amd64)
+    ac_arch=x86_64
+    ;;
+i?86)
+    ac_arch=x86
+    ;;
+*)
+    ac_arch=none
+esac
+
+if test "$ac_arch" = "none"; then
+  AC_MSG_ERROR([Arch not supported: $ac_arch])
+fi
+
+AM_CONDITIONAL([WITH_X86_64], [test "$ac_arch" = "x86_64"])
+AM_CONDITIONAL([WITH_X86], [test "$ac_arch" = "x86"])
+
+dnl ******************************
 dnl Check for standard headers
 dnl ******************************
 
@@ -133,6 +162,8 @@ AC_OUTPUT
 
 echo
 echo "Configure Result:"
+echo
+echo "  CPU arch: $ac_arch"
 echo
 echo "== required headers and libraries =="
 echo "  numa.h  : $have_numa_h"
