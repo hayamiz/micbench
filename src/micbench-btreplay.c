@@ -83,7 +83,7 @@ do_thread_job(mb_btreplay_thread_arg_t *arg)
                 bufsz = sz;
                 buf = memalign(KIBI, bufsz);
             }
-            if (ofst != endpos && false) {
+            if (ofst != endpos) {
                 if (-1 == lseek64(fd, ofst, SEEK_SET)) {
                     fprintf(stderr, "lseek64 failed: errno=%d\n", errno);
                 }
