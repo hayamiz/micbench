@@ -19,9 +19,9 @@ INCLUDES =					\
 	-I$(top_srcdir)/test/lib		\
 	-I$(top_srcdir)/src
 
-LIBS = $(CUTTER_LIBS)					\
-	$(top_builddir)/test/lib/libmicbench-test.la	\
-	$(top_builddir)/src/libmicbench-utils.la	\
+LIBS = $(CUTTER_LIBS)						\
+	$(top_builddir)/test/lib/libmicbench-test-utils.la	\
+	$(top_builddir)/src/libmicbench-utils.la		\
 	$(top_builddir)/src/libmicbench-io.la
 
 test_micbench_utils_la_SOURCES = test-micbench-utils.c

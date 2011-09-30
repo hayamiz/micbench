@@ -152,24 +152,30 @@ mb_btreplay_parse_args(int argc, char **argv, mb_btreplay_option_t *option)
             break;
         default:
             fprintf(stderr, "Unknown option -%c\n", optchar);
-            return -1;
+            goto error;
         }
     }
 
     if (optind == argc) {
         fprintf(stderr, "Input blktrace binary dump is not specified.\n");
+        goto error;
     }
     if (optind + 1 == argc) {
         fprintf(stderr, "Target device or file is not specified.\n");
+        goto error;
     }
     option->btdump_path = argv[optind++];
     option->target_path = argv[optind++];
 
     if (option->repeat == true && option->timeout == 0) {
         fprintf(stderr, "Repeat(-r) option must be used with limited timeout (-t) option");
+        goto error;
     }
 
     return 0;
+    
+error:
+    return -1;
 }
 
 int

@@ -15,7 +15,17 @@ fi
 if ! test -z "$DEBUG"; then
     WRAPPER="gdb --args"
 elif ! test -z "$MEMCHECK"; then
-    WRAPPER="valgrind --leak-check=summary"
+    VGLOG=`mktemp`
+    WRAPPER="valgrind --leak-check=summary --track-origins=yes --read-var-info=yes --log-file=${VGLOG}"
 fi
 
-$WRAPPER $CUTTER -s $BASE_DIR "$@" $BASE_DIR
+$WRAPPER $CUTTER --keep-opening-modules -s $BASE_DIR "$@" $BASE_DIR
+
+# show log file of valgrind
+if ! test -z "$MEMCHECK"; then
+    if ! test -z "$PAGER"; then
+	$PAGER $VGLOG
+    else
+	cat $VGLOG
+    fi
+fi
