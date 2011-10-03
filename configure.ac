@@ -92,6 +92,25 @@ if test "$have_libnuma" = "yes"; then
   LIBS="$LIBS -lnuma"
 fi
 
+
+dnl ******************************
+dnl Check for libaio
+dnl ******************************
+
+AC_CHECK_HEADERS(libaio.h, [have_libaio_h=yes], [have_libaio_h=no])
+AC_CHECK_LIB(aio, io_submit, [have_libaio=yes], [have_libaio=no])
+
+if ! test "$have_libaio" = "yes"; then
+  AC_MSG_ERROR([libaio is required.])
+fi
+if ! test "$have_libaio_h" = "yes"; then
+  AC_MSG_ERROR([libaio.h is required.])
+fi
+
+if test "$have_libaio" = "yes"; then
+  LIBS="$LIBS -laio"
+fi
+
 dnl ******************************
 dnl Check for numactl
 dnl ******************************
@@ -168,6 +187,8 @@ echo
 echo "== required headers and libraries =="
 echo "  numa.h  : $have_numa_h"
 echo "  libnuma : $have_libnuma"
+echo " libaio.h : $have_libaio_h"
+echo "   libaio : $have_libaio"
 echo
 echo "== required commands =="
 echo "  Ruby    : $RUBY"
