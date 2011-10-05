@@ -101,6 +101,8 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->seq = true;
     option->rand = false;
     option->direct = false;
+    option->aio = false;
+    option->aio_nr_events = 1;
     option->blk_sz = 64 * KIBI;
     option->ofst_start = 0;
     option->ofst_end = 0;
@@ -108,7 +110,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->verbose = false;
 
     optind = 1;
-    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdWM:b:s:e:z:c:v")) != -1){
+    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdAE:WM:b:s:e:z:c:v")) != -1){
         switch(optchar){
         case 'N': // noop
             option->noop = true;
@@ -152,6 +154,12 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
             break;
         case 'd': // direct IO
             option->direct = true;
+            break;
+        case 'A': // Asynchronous IO
+            option->aio = true;
+            break;
+        case 'E': // AIO nr_events for each thread
+            option->aio_nr_events = strtol(optarg, NULL, 10);
             break;
         case 'W': // write
             option->write = true;

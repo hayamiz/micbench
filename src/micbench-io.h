@@ -14,6 +14,10 @@ typedef struct {
     bool read;
     bool write;
     double rwmix;
+    bool aio;
+
+    // aio nr_events per threads
+    int aio_nr_events;
 
     // thread affinity assignment
     mb_affinity_t **affinities;
