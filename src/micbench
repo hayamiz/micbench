@@ -70,10 +70,19 @@ class BaseCommand
     raise NotImplementedError.new("#{self.class}##{__method__} is not implemented.")
   end
 
-  def invoke(argv)
+  def reset_option()
+    raise NotImplementedError.new("#{self.class}##{__method__} is not implemented.")
+  end
+
+  def parse_args(argv)
+    self.reset_option()
     argv = @parser.parse(argv)
     self.check_option()
-    self.do_cmd(argv)
+    argv
+  end
+
+  def invoke(argv)
+    self.do_cmd(self.parse_args(argv))
   end
 
   def gen_cmd(argv)
@@ -361,24 +370,6 @@ class IoCommand < BaseCommand
   command_name "io", "IO benchmark on block devices and files"
 
   def init_option_parser()
-    @options[:noop] = false
-    @options[:multi] = 1
-    @options[:affinity] = {}
-    @options[:timeout] = 60
-    @options[:mode] = :read
-    @options[:pattern] = :seq
-    @options[:bogus_comp] = 0
-    @options[:direct] = false
-    @options[:async] = true
-    @options[:aio_nr_events] = 64
-    @options[:blocksize] = 16 * 1024
-    @options[:offset_start] = 0
-    @options[:offset_end] = 0
-    @options[:misalign] = 0
-    @options[:verbose] = false
-    @options[:debug] = false
-    @options[:rwmix] = 0.0
-
     @parser.banner = "Usage: #{File.basename($0, '.*')} #{self.command_name} [options] device_or_file"
 
     parse_error = lambda do |*msg|
@@ -482,13 +473,32 @@ class IoCommand < BaseCommand
     end
   end
 
+  def reset_option
+    @options[:noop] = false
+    @options[:multi] = 1
+    @options[:affinity] = {}
+    @options[:timeout] = 60
+    @options[:mode] = :read
+    @options[:pattern] = :seq
+    @options[:bogus_comp] = 0
+    @options[:direct] = false
+    @options[:async] = false
+    @options[:aio_nr_events] = 64
+    @options[:blocksize] = 16 * 1024
+    @options[:offset_start] = 0
+    @options[:offset_end] = 0
+    @options[:misalign] = 0
+    @options[:verbose] = false
+    @options[:debug] = false
+    @options[:rwmix] = 0.0
+  end
+
   def check_option
     @options[:affinity] = @options[:affinity].select do |tid,entry|
       tid < @options[:multi]
     end.map do |tid, entry|
       cpuset = entry[0]
       mnodeset = entry[1]
-      p mnodeset
       max_cpuid = cpuset.max
       max_mnodeid = mnodeset.max
       cpu_bitmap = (0..[max_cpuid, $logicores - 1].min).map{|cpuid| cpuset.include?(cpuid) ? "1" : "0"}.join("")
