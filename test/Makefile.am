@@ -19,20 +19,27 @@ INCLUDES =					\
 	-I$(top_srcdir)/test/lib		\
 	-I$(top_srcdir)/src
 
-LIBS = $(CUTTER_LIBS)						\
-	$(top_builddir)/test/lib/libmicbench-test-utils.la	\
-	$(top_builddir)/src/libmicbench-utils.la		\
-	$(top_builddir)/src/libmicbench-io.la
+LIBS = $(CUTTER_LIBS)
+LIBADD = \
+	$(top_builddir)/test/lib/libmicbench-test-utils.la \
+	$(top_builddir)/src/libmicbench-utils.la
 
 test_micbench_utils_la_SOURCES = test-micbench-utils.c
+test_micbench_utils_la_LIBADD = $(LIBADD)
+
 test_micbench_io_la_SOURCES = test-micbench-io.c
+test_micbench_io_la_LIBADD =			\
+	$(LIBADD)				\
+	$(top_builddir)/src/libmicbench-io.la
+
 
 if WITH_BLKTRACE
 noinst_LTLIBRARIES += test-micbench-btreplay.la
 
 test_micbench_btreplay_la_SOURCES = test-micbench-btreplay.c
-
-LIBS += $(top_builddir)/src/libmicbench-btreplay.la
+test_micbench_btreplay_la_LIBADD =			\
+	$(LIBADD)					\
+	$(top_builddir)/src/libmicbench-btreplay.la
 endif
 
 echo-cutter:
