@@ -332,12 +332,9 @@ do_async_io(th_arg_t *arg)
             io_set_callback(iocbp, mb_async_callback);
             ret = io_submit(*ctx, 1, &iocbp);
             if (1 != ret){
-                fprintf(stderr, "ret = %d\n", ret);
                 perror("do_async_io:io_submit failed");
                 exit(EXIT_FAILURE);
             }
-            fprintf(stderr, ".");
-            fflush(stderr);
         }
         num_flying_ioreq += n;
 
@@ -348,7 +345,6 @@ do_async_io(th_arg_t *arg)
         for(i = 0; i < n; i++){
             mb_async_callback(*ctx, events[i].obj, 0, 0);
         }
-        fprintf(stderr, "%d\n", n);
         meter->count += n;
         num_flying_ioreq -= n;
     }
