@@ -264,7 +264,7 @@ mb_set_option(micbench_io_option_t *option_)
 void
 mb_async_callback(io_context_t ctx, struct iocb *iocbp, long res, long res2)
 {
-    free(iocbp->data);
+    // free(iocbp->data);
     free(iocbp);
 }
 
@@ -283,12 +283,14 @@ do_async_io(th_arg_t *arg)
     struct iocb *iocbp;
     char *buf;
     int ret;
+    struct io_event *events;
 
     // TODO: recycle iocb
     // TODO: recycle buffer for IO
 
     fd = arg->fd;
     meter = arg->meter;
+    events = malloc(sizeof(struct io_event) * option.aio_nr_events);
     ctx = malloc(sizeof(io_context_t));
     bzero(ctx, sizeof(io_context_t));
     num_flying_ioreq = 0;
@@ -339,9 +341,12 @@ do_async_io(th_arg_t *arg)
         }
         num_flying_ioreq += n;
 
-        if (0 < (n = io_queue_run(*ctx))) {
-            perror("do_async_io:io_queue_wait failed");
+        if (0 >= (n = io_getevents(*ctx, 1, option.aio_nr_events, events, NULL))) {
+            perror("do_async_io:io_getevents failed");
             exit(EXIT_FAILURE);
+        }
+        for(i = 0; i < n; i++){
+            mb_async_callback(*ctx, events[i].obj, 0, 0);
         }
         fprintf(stderr, "%d\n", n);
         meter->count += n;
