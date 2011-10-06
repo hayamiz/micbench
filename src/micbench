@@ -370,6 +370,7 @@ class IoCommand < BaseCommand
     @options[:bogus_comp] = 0
     @options[:direct] = false
     @options[:async] = true
+    @options[:aio_nr_events] = 64
     @options[:blocksize] = 16 * 1024
     @options[:offset_start] = 0
     @options[:offset_end] = 0
@@ -438,6 +439,10 @@ class IoCommand < BaseCommand
     @parser.on('-A', '--async',
               "Asynchronous IO mode with libaio (default: no).") do
       @options[:async] = true
+    end
+    @parser.on('-E', '--aio-nr-events NUM',
+               "# of events per AIO context (default: 64).") do |num|
+      @options[:aio_nr_events] = num.to_i
     end
     @parser.on('-b', '--blocksize SIZE',
               "Size of IO block (default: 16k)") do |size|
