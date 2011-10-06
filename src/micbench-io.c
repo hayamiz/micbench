@@ -102,7 +102,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->rand = false;
     option->direct = false;
     option->aio = false;
-    option->aio_nr_events = 1;
+    option->aio_nr_events = 64;
     option->blk_sz = 64 * KIBI;
     option->ofst_start = 0;
     option->ofst_end = 0;
@@ -294,6 +294,8 @@ do_async_io(th_arg_t *arg)
     num_flying_ioreq = 0;
     if (option.seq) {
         ofst = option.ofst_start + (option.ofst_end - option.ofst_start) * arg->id / option.multi;
+    } else {
+        ofst = 0;
     }
 
     io_queue_init(option.aio_nr_events, ctx);
@@ -319,9 +321,9 @@ do_async_io(th_arg_t *arg)
             addr = ofst * option.blk_sz + option.misalign;
 
             if (mb_read_or_write() == MB_DO_READ) {
-                io_prep_pread(&iocbp[i], fd, buf, option.blk_sz, ofst * option.blk_sz);
+                io_prep_pread(iocbp, fd, buf, option.blk_sz, ofst * option.blk_sz);
             } else {
-                io_prep_pwrite(&iocbp[i], fd, buf, option.blk_sz, ofst * option.blk_sz);
+                io_prep_pwrite(iocbp, fd, buf, option.blk_sz, ofst * option.blk_sz);
             }
             ofst++;
 
@@ -332,13 +334,16 @@ do_async_io(th_arg_t *arg)
                 perror("do_async_io:io_submit failed");
                 exit(EXIT_FAILURE);
             }
+            fprintf(stderr, ".");
+            fflush(stderr);
         }
         num_flying_ioreq += n;
 
-        if (0 < (n = io_queue_wait(*ctx, NULL))) {
+        if (0 < (n = io_queue_run(*ctx))) {
             perror("do_async_io:io_queue_wait failed");
             exit(EXIT_FAILURE);
         }
+        fprintf(stderr, "%d\n", n);
         meter->count += n;
         num_flying_ioreq -= n;
     }
