@@ -3,6 +3,8 @@
 
 #include "micbench.h"
 
+#include <libaio.h>
+
 typedef struct {
     // multiplicity of IO
     int multi;

@@ -204,22 +204,26 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
 
     // check device
 
+    int fd;
     if (option->noop == false) {
         if (option->read) {
-            if (open(option->path, O_RDONLY) == -1) {
+            if ((fd = open(option->path, O_RDONLY)) == -1) {
                 fprintf(stderr, "Cannot open %s with O_RDONLY\n", option->path);
                 goto error;
             }
+            close(fd);
         } else if (option->write) {
-            if (open(option->path, O_WRONLY) == -1) {
+            if ((fd = open(option->path, O_WRONLY)) == -1) {
                 fprintf(stderr, "Cannot open %s with O_WRONLY\n", option->path);
                 goto error;
             }
+            close(fd);
         } else {
-            if (open(option->path, O_RDWR) == -1) {
+            if ((fd = open(option->path, O_RDWR)) == -1) {
                 fprintf(stderr, "Cannot open %s with O_RDWR\n", option->path);
                 goto error;
             }
+            close(fd);
         }
     }
 
@@ -258,7 +262,90 @@ mb_set_option(micbench_io_option_t *option_)
 }
 
 void
-do_iostress(th_arg_t *th_arg)
+mb_async_callback(io_context_t ctx, struct iocb *iocbp, long res, long res2)
+{
+    free(iocbp->data);
+    free(iocbp);
+}
+
+void
+do_async_io(th_arg_t *arg)
+{
+    int fd;
+    meter_t *meter;
+    io_context_t *ctx;
+    struct timeval start_tv;
+    int64_t ofst;
+    int64_t addr;
+    int num_flying_ioreq;
+    int n;
+    int i;
+    struct iocb *iocbp;
+    char *buf;
+    int ret;
+
+    // TODO: recycle iocb
+    // TODO: recycle buffer for IO
+
+    fd = arg->fd;
+    meter = arg->meter;
+    ctx = malloc(sizeof(io_context_t));
+    bzero(ctx, sizeof(io_context_t));
+    num_flying_ioreq = 0;
+    if (option.seq) {
+        ofst = option.ofst_start + (option.ofst_end - option.ofst_start) * arg->id / option.multi;
+    }
+
+    io_queue_init(option.aio_nr_events, ctx);
+
+    if (option.read == false && option.write == false) {
+        fprintf(stderr, "Only read or write can be specified in seq.");
+        exit(EXIT_FAILURE);
+    }
+
+    GETTIMEOFDAY(&start_tv);
+    while(mb_elapsed_time_from(&start_tv) < option.timeout) {
+        n = option.aio_nr_events - num_flying_ioreq;
+        for(i = 0; i < n; i++) {
+            iocbp = malloc(sizeof(struct iocb));
+            bzero(iocbp, sizeof(struct iocb));
+            buf = malloc(option.blk_sz);
+            bzero(buf, option.blk_sz);
+
+            if (option.rand) {
+                ofst = (int64_t) mb_rand_range_long(option.ofst_start,
+                                                    option.ofst_end);
+            }
+            addr = ofst * option.blk_sz + option.misalign;
+
+            if (mb_read_or_write() == MB_DO_READ) {
+                io_prep_pread(&iocbp[i], fd, buf, option.blk_sz, ofst * option.blk_sz);
+            } else {
+                io_prep_pwrite(&iocbp[i], fd, buf, option.blk_sz, ofst * option.blk_sz);
+            }
+            ofst++;
+
+            io_set_callback(iocbp, mb_async_callback);
+            ret = io_submit(*ctx, 1, &iocbp);
+            if (1 != ret){
+                fprintf(stderr, "ret = %d\n", ret);
+                perror("do_async_io:io_submit failed");
+                exit(EXIT_FAILURE);
+            }
+        }
+        num_flying_ioreq += n;
+
+        if (0 < (n = io_queue_wait(*ctx, NULL))) {
+            perror("do_async_io:io_queue_wait failed");
+            exit(EXIT_FAILURE);
+        }
+        meter->count += n;
+        num_flying_ioreq -= n;
+    }
+}
+
+void
+do_sync_io(th_arg_t *th_arg)
 {
     struct timeval       start_tv;
     struct timeval       timer;
@@ -288,7 +375,7 @@ do_iostress(th_arg_t *th_arg)
                                                     option.ofst_end);
                 addr = ofst * option.blk_sz + option.misalign;
                 if (lseek64(fd, addr, SEEK_SET) == -1){
-                    perror("do_iostress:lseek64");
+                    perror("do_sync_io:lseek64");
                     exit(EXIT_FAILURE);
                 }
 
@@ -312,7 +399,7 @@ do_iostress(th_arg_t *th_arg)
         ofst = option.ofst_start + ((option.ofst_end - option.ofst_start) * th_arg->id) / option.multi;
         addr = ofst * option.blk_sz + option.misalign;
         if (lseek64(fd, addr, SEEK_SET) == -1){
-            perror("do_iostress:lseek64");
+            perror("do_sync_io:lseek64");
             exit(EXIT_FAILURE);
         }
 
@@ -341,7 +428,7 @@ do_iostress(th_arg_t *th_arg)
                     ofst = option.ofst_start;
                     addr = ofst * option.blk_sz + option.misalign;
                     if (lseek64(fd, addr, SEEK_SET) == -1){
-                        perror("do_iostress:lseek64");
+                        perror("do_sync_io:lseek64");
                         exit(EXIT_FAILURE);
                     }
                 }
@@ -370,7 +457,13 @@ thread_handler(void *arg)
         }
     }
 
-    do_iostress(th_arg);
+    if (option.aio == true) {
+        if (option.verbose) fprintf(stderr, "do_async_io\n");
+        do_async_io(th_arg);
+    } else {
+        if (option.verbose) fprintf(stderr, "do_sync_io\n");
+        do_sync_io(th_arg);
+    }
 
     return NULL;
 }
@@ -421,12 +514,14 @@ micbench_io_main(int argc, char **argv)
     }
 
     common_seed = time(NULL);
-    for(i = 0;i < option.multi;i++){
-        if ((fd = open(option.path, flags)) == -1){
-            perror("main:open(2)");
-            exit(EXIT_FAILURE);
-        }
 
+    if ((fd = open(option.path, flags)) == -1){
+        perror("main:open(2)");
+        exit(EXIT_FAILURE);
+    }
+    fprintf(stderr, "fd = %d\n", fd);
+
+    for(i = 0;i < option.multi;i++){
         th_args[i].id          = i;
         th_args[i].self        = malloc(sizeof(pthread_t));
         th_args[i].fd          = fd;
