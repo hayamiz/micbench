@@ -76,6 +76,10 @@ class BaseCommand
     self.do_cmd(argv)
   end
 
+  def gen_cmd(argv)
+    raise NotImplementedError.new("#{self.class}##{__method__} is not implemented.")
+  end
+
   def do_cmd(argv)
     raise NotImplementedError.new("#{self.class}##{__method__} is not implemented.")
   end
@@ -209,29 +213,36 @@ class MemoryCommand < BaseCommand
     end
   end
 
-  def do_cmd(argv)
+  def gen_cmd(argv)
     if ! argv.empty?
       $stderr.puts("Following arguments are ignored: #{argv.join(' ')}")
     end
     real_command = File.join(File.dirname(__FILE__), "micbench-mem")
-    real_command_str = [real_command,
-                        "-m", @options[:multi],
-                        "-t", @options[:timeout],
-                        (@options[:mode] == :rand ? "-R" : "-S"),
-                        (@options[:local] ? "-L" : []),
-                        "-s", @options[:size],
-                        (@options[:hugetlbfile] ? ["-H", @options[:hugetlbfile]] : []),
-                        "-z", @options[:hugepagesize],
-                        (@options[:verbose] ? "-v" : []),
-                        @options[:affinity].map{|aff| ["-a", aff]}].flatten.join(" ")
+    [real_command,
+     "-m", @options[:multi],
+     "-t", @options[:timeout],
+     (@options[:mode] == :rand ? "-R" : "-S"),
+     (@options[:local] ? "-L" : []),
+     "-s", @options[:size],
+     (@options[:hugetlbfile] ? ["-H", @options[:hugetlbfile]] : []),
+     "-z", @options[:hugepagesize],
+     (@options[:verbose] ? "-v" : []),
+     @options[:affinity].map{|aff| ["-a", aff]}].flatten.join(" ")
+  end
 
+  def do_cmd(argv)
+    if ! argv.empty?
+      $stderr.puts("Following arguments are ignored: #{argv.join(' ')}")
+    end
     if ENV['MB_DEBUG'] || @options[:debug]
-      puts real_command_str
+      puts gen_cmd(argv)
     end
     if ENV['MB_LEAKCHECK']
-      real_command_str = "valgrind --leak-check=full " + real_command_str
+      wrapper = "valgrind --leak-check=full "
+    else
+      wrapper = ""
     end
-    exec(real_command_str)
+    exec("#{wrapper} #{gen_cmd(argv)}")
   end
 end
 
@@ -358,6 +369,7 @@ class IoCommand < BaseCommand
     @options[:pattern] = :seq
     @options[:bogus_comp] = 0
     @options[:direct] = false
+    @options[:async] = true
     @options[:blocksize] = 16 * 1024
     @options[:offset_start] = 0
     @options[:offset_end] = 0
@@ -422,6 +434,10 @@ class IoCommand < BaseCommand
     @parser.on('-d', '--direct',
               "Use O_DIRECT (default: no). If this flag is specified, block size must be multiples of block size of devices.") do
       @options[:direct] = true
+    end
+    @parser.on('-A', '--async',
+              "Asynchronous IO mode with libaio (default: no).") do
+      @options[:async] = true
     end
     @parser.on('-b', '--blocksize SIZE',
               "Size of IO block (default: 16k)") do |size|
@@ -498,6 +514,7 @@ class IoCommand < BaseCommand
                         (@options[:pattern] == :rand ? "-R" : "-S"),
                         "-c", @options[:bogus_comp],
                         (@options[:direct] ? "-d" : []),
+                        (@options[:async] ? "-A" : []),
                         (@options[:mode] == :write ? "-W" :
                          @options[:mode] == :rwmix ? ["-M", @options[:rwmix].to_s] :
                          []),
