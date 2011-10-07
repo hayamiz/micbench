@@ -60,6 +60,33 @@ mb_aiom_destroy (mb_aiom_t *aiom)
     free(aiom);
 }
 
+int
+mb_aiom_submit(mb_aiom_t *aiom, int nr, struct iocb **iocbpp)
+{
+    return io_submit(aiom->context, nr, iocbpp);
+}
+
+int
+mb_aiom_submit_pread (mb_aiom_t *aiom, int fd, void *buf, size_t count, long long offset)
+{
+    struct iocb *iocbp;
+
+    if (NULL == (iocbp = mb_iocb_pool_pop(aiom->cbpool))) {
+        return -1;
+    }
+
+    io_prep_pread(iocbp, fd, buf, count, offset);
+
+    return mb_aiom_submit(aiom, 1, &iocbp);
+}
+
+int
+mb_aiom_submit_pwrite(mb_aiom_t *aiom, int fd, void *buf, size_t count, long long offset)
+{
+    return -1;
+}
+
+
 mb_iocb_pool_t *
 mb_iocb_pool_make(int nr_events)
 {

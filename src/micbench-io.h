@@ -79,8 +79,11 @@ typedef struct {
 void mb_set_option(micbench_io_option_t *option);
 int parse_args(int argc, char **argv, micbench_io_option_t *option);
 
-mb_aiom_t *mb_aiom_make    (int nr_events);
-void       mb_aiom_destroy (mb_aiom_t *aiom);
+mb_aiom_t *mb_aiom_make         (int nr_events);
+void       mb_aiom_destroy      (mb_aiom_t *aiom);
+int        mb_aiom_submit       (mb_aiom_t *aiom, int nr, struct iocb **iocbpp);
+int        mb_aiom_submit_pread (mb_aiom_t *aiom, int fd, void *buf, size_t count, long long offset);
+int        mb_aiom_submit_pwrite(mb_aiom_t *aiom, int fd, void *buf, size_t count, long long offset);
 
 mb_iocb_pool_t *mb_iocb_pool_make    (int nr_events);
 void            mb_iocb_pool_destroy (mb_iocb_pool_t *pool);
