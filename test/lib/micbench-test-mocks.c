@@ -2,12 +2,16 @@
 #include "micbench-test-mocks.h"
 
 static GHashTable *will_call_table = NULL;
+static const char *fail_msg = NULL;
 
 void mb_mock_init(void)
 {
-    if (will_call_table == NULL) {
-        will_call_table = g_hash_table_new(g_str_hash, g_str_equal);
+    if (will_call_table != NULL) {
+        g_hash_table_destroy(will_call_table);
     }
+
+    fail_msg = NULL;
+    will_call_table = g_hash_table_new(g_str_hash, g_str_equal);
 }
 
 static void
@@ -20,6 +24,10 @@ mb_mock_finish_iterator(void *_key, void *_value, void *_user_data)
     GString *msg;
 
     if (mock_args_list == NULL) {
+        return;
+    }
+
+    if (fail_msg != NULL) {
         return;
     }
 
@@ -52,13 +60,15 @@ mb_mock_finish_iterator(void *_key, void *_value, void *_user_data)
         g_string_append_printf(msg, ")");
     }
 
+    fail_msg = cut_take_printf("Expected function call: %s %s",
+                               fname, msg->str);
     gcut_take_string(msg);
-    cut_fail("Expected function call: %s %s",
-             fname, msg->str);
 }
 
 void mb_mock_finish(void)
 {
+    const char *__fail_msg;
+
     if (will_call_table == NULL) {
         return;
     }
@@ -69,6 +79,11 @@ void mb_mock_finish(void)
 
     g_hash_table_destroy(will_call_table);
     will_call_table = NULL;
+    __fail_msg = fail_msg;
+    fail_msg = NULL;
+
+    if (__fail_msg)
+        cut_fail("%s", fail_msg);
 }
 
 void
