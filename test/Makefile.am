@@ -15,11 +15,12 @@ LDFLAGS += -module -rpath $(libdir) -avoid-version -no-undefined $(GLIB_LIBS)
 
 INCLUDES =					\
 	 $(CUTTER_CFLAGS)			\
+	 $(GCUTTER_CFLAGS)			\
 	 $(GLIB_CFLAGS)				\
 	-I$(top_srcdir)/test/lib		\
 	-I$(top_srcdir)/src
 
-LIBS += $(CUTTER_LIBS)
+LIBS += $(CUTTER_LIBS) $(GCUTTER_LIBS)
 LIBADD = \
 	$(top_builddir)/test/lib/libmicbench-test-utils.la \
 	$(top_builddir)/test/lib/libmicbench-test-mocks.la \

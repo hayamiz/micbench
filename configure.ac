@@ -156,8 +156,18 @@ m4_ifdef([AC_CHECK_CUTTER],
          [AC_CHECK_CUTTER],
          [ac_cv_use_cutter="no"])
 
-AM_CONDITIONAL([WITH_CUTTER], [test "$ac_cv_use_cutter" != "no"])
-if test "$ac_cv_use_cutter" != "no"; then
+m4_ifdef([AC_CHECK_GCUTTER],
+         [AC_CHECK_GCUTTER],
+         [ac_cv_use_gcutter="no"])
+
+if test "$ac_cv_use_cutter" != "no" && test "$ac_cv_use_gcutter" != "no"; then
+  have_cutter="yes"
+else
+  have_cutter="no"
+fi
+
+AM_CONDITIONAL([WITH_CUTTER], [test "$have_cutter" = "yes"])
+if test "$have_cutter" = "yes"; then
   AC_DEFINE(WITH_CUTTER, 1, [Define to 1 if you use Cutter])
 fi
 
