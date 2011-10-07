@@ -29,7 +29,7 @@ typedef struct {
 /* ---- utility functions ---- */
 
 void mb_mock_init(void);
-void mb_mock_destroy(void);
+void mb_mock_finish(void);
 
 /* mb_assert_will_call(const char *fname,
  *                     mb_mock_arg_type_t arg_type1, arg1,

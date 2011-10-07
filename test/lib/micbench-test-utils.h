@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <cutter.h>
+#include <gcutter.h>
 
 const char *mb_test_get_test_dir (void);
 const char *mb_test_get_fixtures_dir (void);

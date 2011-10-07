@@ -28,7 +28,7 @@ mb_take_gpointer_array(const void *ptr, ...)
 
     va_start(list, ptr);
     ret = malloc(sizeof(void *));
-    ret[0] = ptr;
+    ret[0] = (void *) ptr;
     for(i = 0; ; i++){
         cur_ptr = va_arg(list, void *);
         if (cur_ptr != NULL) {

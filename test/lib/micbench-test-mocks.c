@@ -10,26 +10,79 @@ void mb_mock_init(void)
     }
 }
 
-void mb_mock_destroy(void)
+static void
+mb_mock_finish_iterator(void *_key, void *_value, void *_user_data)
 {
-    if (will_call_table != NULL) {
-        g_hash_table_destroy(will_call_table);
-        will_call_table = NULL;
+    const char *fname = (const char *) _key;
+    GList *mock_args_list = (GList *) _value;
+    GList *mock_args;
+    mb_mock_arg_t *mock_arg;
+    GString *msg;
+
+    if (mock_args_list == NULL) {
+        return;
     }
+
+    msg = g_string_new("(");
+    mock_args = mock_args_list->data;
+
+    for(; mock_args != NULL; mock_args = mock_args->next) {
+        mock_arg = (mb_mock_arg_t *) mock_args->data;
+        switch(mock_arg->type){
+        case MOCK_ARG_SKIP:
+            g_string_append_printf(msg, "(skipped), ");
+            break;
+        case MOCK_ARG_INT:
+            g_string_append_printf(msg, "%d, ", mock_arg->u._int);
+            break;
+        case MOCK_ARG_PTR:
+            g_string_append_printf(msg, "%p, ", mock_arg->u._ptr);
+            break;
+        default:
+            fprintf(stderr,
+                    "mb_mock_finish_iterator: unimplemented type %d\n",
+                    mock_arg->type);
+            exit(EXIT_FAILURE);
+        }
+    }
+    if (msg->len == 1){
+        g_string_append_printf(msg, ")");
+    } else {
+        msg = g_string_truncate(msg, msg->len - 2);
+        g_string_append_printf(msg, ")");
+    }
+
+    gcut_take_string(msg);
+    cut_fail("Expected function call: %s %s",
+             fname, msg->str);
+}
+
+void mb_mock_finish(void)
+{
+    if (will_call_table == NULL) {
+        return;
+    }
+
+    g_hash_table_foreach(will_call_table,
+                         mb_mock_finish_iterator,
+                         NULL);
+
+    g_hash_table_destroy(will_call_table);
+    will_call_table = NULL;
 }
 
 void
 mb_mock_assert_will_call(const char *fname, ...)
 {
     va_list args;
+    GList *mock_args_list;
     GList *mock_args;
     mb_mock_arg_t *mock_arg;
     mb_mock_arg_type_t mock_arg_type;
 
-    if (will_call_table == NULL) {
-        will_call_table = g_hash_table_new(g_str_hash, g_str_equal);
-    }
+    cut_assert_not_null(will_call_table);
 
+    mock_args_list = g_hash_table_lookup(will_call_table, fname);
     mock_args = NULL;
 
     va_start(args, fname);
@@ -63,7 +116,9 @@ mb_mock_assert_will_call(const char *fname, ...)
         mock_args = g_list_append(mock_args, mock_arg);
     }
 
-    g_hash_table_insert(will_call_table, (char *) fname, mock_args);
+    mock_args_list = g_list_append(mock_args_list, mock_args);
+
+    g_hash_table_insert(will_call_table, (char *) fname, mock_args_list);
 
     va_end(args);
 }
@@ -71,6 +126,7 @@ mb_mock_assert_will_call(const char *fname, ...)
 void
 mb_mock_check(const char *fname, ...)
 {
+    GList *mock_args_list;
     GList *mock_args;
     mb_mock_arg_t *mock_arg;
     va_list args;
@@ -82,9 +138,13 @@ mb_mock_check(const char *fname, ...)
     if (will_call_table == NULL)
         return;
 
-    if (NULL == (mock_args = g_hash_table_lookup(will_call_table, fname))) {
+    if (NULL == (mock_args_list = g_hash_table_lookup(will_call_table, fname))) {
         return;
     }
+
+    mock_args = (GList *) mock_args_list->data;
+    mock_args_list = g_list_remove(mock_args_list, mock_args);
+    g_hash_table_insert(will_call_table, (char *) fname, mock_args_list);
 
     va_start(args, fname);
 
