@@ -74,6 +74,8 @@ cut_setup(void)
     iocb = NULL;
     cbpool = NULL;
 
+    mb_mock_init();
+
     // set dummy execution file name in argv for parse_args
     bzero(argv, sizeof(argv));
     argv[0] = "./dummy";
@@ -118,6 +120,8 @@ cut_teardown(void)
         free(iocb);
     if (cbpool != NULL)
         mb_iocb_pool_destroy(cbpool);
+
+    mb_mock_destroy();
 }
 
 /* ---- utility function bodies ---- */
@@ -140,7 +144,8 @@ my_free_hook(void *ptr, const void *caller)
 int
 io_setup(int nr_events, io_context_t *ctxp)
 {
-    MOCK_HISTORY_RECORD("io_setup", mb_mock_arg_int(nr_events), ctxp);
+    mb_mock_check("io_setup", nr_events, ctxp);
+
     int (*io_setup_org)(int, io_context_t *) =
         (int(*)(int, io_context_t *))dlsym(RTLD_NEXT, "io_setup");
     return io_setup_org(nr_events, ctxp);
@@ -284,6 +289,11 @@ test_mb_read_or_write(void)
 void
 test_mb_aiom_make(void)
 {
+    mb_mock_assert_will_call("io_setup",
+                             MOCK_ARG_INT, 64,
+                             MOCK_ARG_SKIP, NULL,
+                             NULL);
+
     aiom = mb_aiom_make(64);
     cut_assert_not_null(aiom);
     cut_assert_equal_int(64, aiom->nr_events);

@@ -4,6 +4,7 @@
 #define _GNU_SOURCE
 
 #include <glib.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <dlfcn.h>
 #include <sys/types.h>
@@ -11,43 +12,31 @@
 
 #include "micbench-test-utils.h"
 
+typedef enum {
+    MOCK_ARG_SKIP = 1,
+    MOCK_ARG_INT,
+    MOCK_ARG_PTR,
+} mb_mock_arg_type_t;
+
 typedef struct {
-    const char *fname;
-    const void **fargs;
-    const char **backtrace;
-    int num_backtrace;
-} mb_mock_hentry_t; // entry of history
+    mb_mock_arg_type_t type;
+    union {
+        int _int; // MOCK_ARG_INT
+        void *_ptr; // MOCK_ARG_PTR
+    } u;
+} mb_mock_arg_t;
 
 /* ---- utility functions ---- */
-void   mb_mock_history_set(GList *history);
-GList *mb_mock_history_get(void);
-void   mb_mock_history_append(mb_mock_hentry_t *entry);
-void   mb_mock_history_destroy(void);
 
-mb_mock_hentry_t *mb_mock_hentry_make(const char *fname, const void **fargs);
-void              mb_mock_hentry_destroy(mb_mock_hentry_t *entry);
+void mb_mock_init(void);
+void mb_mock_destroy(void);
 
-const void *mb_mock_arg_int(int val);
+/* mb_assert_will_call(const char *fname,
+ *                     mb_mock_arg_type_t arg_type1, arg1,
+ *                     ..., NULL)
+ */
+void mb_mock_assert_will_call(const char *fname, ...);
 
-
-#define BACKTRACE_MAX 10
-#define mb_mock_collect_backtrace(entry)                                \
-    {                                                                   \
-        void *__bt_array[BACKTRACE_MAX];                                \
-        (entry)->num_backtrace = backtrace(__bt_array, BACKTRACE_MAX);  \
-        (entry)->backtrace = backtrace_symbols(__bt_array,              \
-                                               (entry)->num_backtrace); \
-        cut_take_memory((entry)->backtrace);                            \
-    }
-
-#define MOCK_HISTORY_RECORD(fname, ...)                                 \
-    {                                                                   \
-        mb_mock_hentry_t *__entry;                                      \
-        __entry = mb_mock_hentry_make(fname,                            \
-                                      mb_take_gpointer_array(__VA_ARGS__, \
-                                                             NULL));    \
-        mb_mock_collect_backtrace(__entry);                             \
-        mb_mock_history_append(__entry);                                \
-    }
+void mb_mock_check(const char *fname, ...);
 
 #endif
