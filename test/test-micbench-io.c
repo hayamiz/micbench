@@ -59,6 +59,7 @@ static void my_free_hook(void *ptr, const void *caller);
 // mocking libaio.h
 #include <libaio.h>
 int io_setup(int nr_events, io_context_t *ctxp);
+int io_submit(io_context_t ctx_id, long nr, struct iocb **iocbpp);
 
 /* ---- cutter setup/teardown ---- */
 void
@@ -74,7 +75,6 @@ cut_setup(void)
     iocb = NULL;
     cbpool = NULL;
 
-    mb_mock_init();
 
     // set dummy execution file name in argv for parse_args
     bzero(argv, sizeof(argv));
@@ -107,7 +107,7 @@ cut_teardown(void)
                                         cell->lineno));
         }
     }
-    
+
 
     __free_hook = NULL;
     if (freed_list != NULL)
@@ -120,8 +120,6 @@ cut_teardown(void)
         free(iocb);
     if (cbpool != NULL)
         mb_iocb_pool_destroy(cbpool);
-
-    mb_mock_destroy();
 }
 
 /* ---- utility function bodies ---- */
@@ -149,6 +147,13 @@ io_setup(int nr_events, io_context_t *ctxp)
     int (*io_setup_org)(int, io_context_t *) =
         (int(*)(int, io_context_t *))dlsym(RTLD_NEXT, "io_setup");
     return io_setup_org(nr_events, ctxp);
+}
+
+int
+io_submit(io_context_t ctx_id, long nr, struct iocb **iocbpp)
+{
+    mb_mock_check("io_submit", ctx_id, nr, iocbpp);
+    return nr;
 }
 
 /* ---- test function bodies ---- */
@@ -289,6 +294,8 @@ test_mb_read_or_write(void)
 void
 test_mb_aiom_make(void)
 {
+    mb_mock_init();
+
     mb_mock_assert_will_call("io_setup",
                              MOCK_ARG_INT, 64,
                              MOCK_ARG_SKIP, NULL,
@@ -299,6 +306,8 @@ test_mb_aiom_make(void)
     cut_assert_equal_int(64, aiom->nr_events);
     cut_assert_not_equal_intptr(0, aiom->context);
     cut_assert_not_null(aiom->cbpool);
+
+    mb_mock_finish();
 }
 
 void
@@ -321,19 +330,86 @@ test_mb_aiom_build_blocks(void)
 void
 test_mb_aiom_submit(void)
 {
-    cut_pend("TODO");
+    mb_mock_init();
+
+    struct iocb *iocbpp[64];
+    int i;
+
+    aiom = mb_aiom_make(64);
+    for(i = 0; i < 64; i++) {
+        iocbpp[i] = mb_iocb_pool_pop(aiom->cbpool);
+        io_prep_pread(iocbpp[i], 999, NULL, 512, i * 512);
+    }
+
+    mb_mock_assert_will_call("io_submit",
+                             MOCK_ARG_PTR, aiom->context,
+                             MOCK_ARG_INT, 64,
+                             MOCK_ARG_PTR, iocbpp,
+                             NULL);
+    cut_assert_equal_int(64, mb_aiom_submit(aiom, 64, iocbpp));
+
+    mb_mock_finish();
 }
 
 void
 test_mb_aiom_submit_pread(void)
 {
-    cut_pend("TODO");
+    mb_mock_init();
+
+    char buf[512];
+    int fd = 3;
+
+    aiom = mb_aiom_make(64);
+
+    mb_mock_assert_will_call("io_submit",
+                             MOCK_ARG_PTR, aiom->context,
+                             MOCK_ARG_INT, 1,
+                             MOCK_ARG_SKIP, NULL,
+                             NULL);
+    // pick to-be-used iocb
+    struct iocb *head = aiom->cbpool->head->iocb;
+
+    cut_assert_equal_int(1, mb_aiom_submit_pread(aiom, fd, buf, 512, 0));
+
+    cut_assert_equal_int(IO_CMD_PREAD, head->aio_lio_opcode);
+    cut_assert_equal_int(fd, head->aio_fildes);
+    cut_assert_equal_pointer(buf, head->u.c.buf);
+    cut_assert_equal_int(512, head->u.c.nbytes);
+    cut_assert(0 == head->u.c.offset);
+
+    cut_assert_equal_int(63, aiom->cbpool->nfree);
+
+    mb_mock_finish();
 }
 
 void
 test_mb_aiom_submit_pwrite(void)
 {
-    cut_pend("TODO");
+    mb_mock_init();
+
+    char buf[512];
+    int fd = 123;
+
+    aiom = mb_aiom_make(64);
+
+    mb_mock_assert_will_call("io_submit",
+                             MOCK_ARG_PTR, aiom->context,
+                             MOCK_ARG_INT, 1,
+                             MOCK_ARG_SKIP, NULL,
+                             NULL);
+    struct iocb *head = aiom->cbpool->head->iocb;
+
+    cut_assert_equal_int(1, mb_aiom_submit_pwrite(aiom, fd, buf, 512, 9999));
+
+    cut_assert_equal_int(IO_CMD_PWRITE, head->aio_lio_opcode);
+    cut_assert_equal_int(fd, head->aio_fildes);
+    cut_assert_equal_pointer(buf, head->u.c.buf);
+    cut_assert_equal_int(512, head->u.c.nbytes);
+    cut_assert(9999 == head->u.c.offset);
+
+    cut_assert_equal_int(63, aiom->cbpool->nfree);
+
+    mb_mock_finish();
 }
 
 void
