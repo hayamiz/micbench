@@ -38,6 +38,106 @@ typedef struct {
 } th_arg_t;
 
 
+
+mb_aiom_t *
+mb_aiom_make(int nr_events)
+{
+    mb_aiom_t *aiom;
+    aiom = malloc(sizeof(mb_aiom_t));
+    bzero(aiom, sizeof(mb_aiom_t));
+
+    aiom->nr_events = nr_events;
+    io_setup(nr_events, &aiom->context);
+    aiom->cbpool = mb_iocb_pool_make(nr_events);
+
+    return aiom;
+}
+
+void
+mb_aiom_destroy (mb_aiom_t *aiom)
+{
+    io_destroy(aiom->context);
+    free(aiom);
+}
+
+mb_iocb_pool_t *
+mb_iocb_pool_make(int nr_events)
+{
+    mb_iocb_pool_t *pool;
+    mb_iocb_pool_cell_t *next_cell;
+    mb_iocb_pool_cell_t *cell;
+    int i;
+
+    pool = malloc(sizeof(mb_iocb_pool_t));
+    bzero(pool, sizeof(mb_iocb_pool_t));
+
+    pool->size = nr_events;
+    pool->nfree = nr_events;
+
+    for(cell = NULL, i = 0; i < nr_events; i++) {
+        next_cell = cell;
+        cell = malloc(sizeof(mb_iocb_pool_cell_t));
+        bzero(cell, sizeof(mb_iocb_pool_cell_t));
+        cell->iocb = malloc(sizeof(struct iocb));
+        bzero(cell->iocb, sizeof(struct iocb));
+
+        if (pool->tail == NULL)
+            pool->tail = cell;
+        cell->next = next_cell;
+    }
+
+    // make ring
+    pool->iocbs = pool->head = cell;
+    pool->tail->next = pool->head;
+
+    return pool;
+}
+
+void
+mb_iocb_pool_destroy(mb_iocb_pool_t *pool)
+{
+    mb_iocb_pool_cell_t *cell;
+    mb_iocb_pool_cell_t *cell_next;
+
+    for(cell_next = NULL, cell = pool->iocbs;
+        cell_next != pool->iocbs; cell = cell_next){
+        cell_next = cell->next;
+        free(cell->iocb);
+        free(cell);
+    }
+    free(pool);
+}
+
+/* return NULL on empty */
+struct iocb *
+mb_iocb_pool_pop(mb_iocb_pool_t *pool)
+{
+    struct iocb *ret;
+    if (pool->nfree == 0) {
+        return NULL;
+    }
+    ret = pool->head->iocb;
+    pool->head = pool->head->next;
+    pool->nfree --;
+
+    return ret;
+}
+
+/* return -1 on error, 0 on success */
+int
+mb_iocb_pool_push(mb_iocb_pool_t *pool, struct iocb *iocb)
+{
+    if (pool->nfree == pool->size) {
+        return -1;
+    }
+    pool->tail = pool->tail->next;
+    pool->tail->iocb = iocb;
+    pool->nfree ++;
+
+    return 0;
+}
+
+
 void
 print_option()
 {
@@ -280,6 +380,7 @@ do_async_io(th_arg_t *arg)
     int num_flying_ioreq;
     int n;
     int i;
+    struct iocb **iocbp_array;
     struct iocb *iocbp;
     char *buf;
     int ret;
@@ -289,11 +390,14 @@ do_async_io(th_arg_t *arg)
     // TODO: recycle buffer for IO
 
     fd = arg->fd;
+    num_flying_ioreq = 0;
     meter = arg->meter;
-    events = malloc(sizeof(struct io_event) * option.aio_nr_events);
     ctx = malloc(sizeof(io_context_t));
     bzero(ctx, sizeof(io_context_t));
-    num_flying_ioreq = 0;
+    events = malloc(sizeof(struct io_event) * option.aio_nr_events);
+    bzero(events, sizeof(struct io_event) * option.aio_nr_events);
+    iocbp_array = malloc(sizeof(struct iocb *) * option.aio_nr_events);
+    bzero(iocbp_array, sizeof(struct iocb *) * option.aio_nr_events);
     if (option.seq) {
         ofst = option.ofst_start + (option.ofst_end - option.ofst_start) * arg->id / option.multi;
     } else {

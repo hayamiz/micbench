@@ -53,8 +53,39 @@ typedef enum {
     MB_DO_WRITE,
 } mb_io_mode_t;
 
+typedef struct mb_iocb_pool_cell {
+    struct iocb *iocb;
+    struct mb_iocb_pool_cell *next;
+} mb_iocb_pool_cell_t;
+
+// AIO control block pool
+typedef struct {
+    int size;
+    int nfree;
+    mb_iocb_pool_cell_t *iocbs; // ring buffer
+    mb_iocb_pool_cell_t *head;
+    mb_iocb_pool_cell_t *tail;
+} mb_iocb_pool_t;
+
+
+// AIO manager
+typedef struct {
+    int nr_events;
+    io_context_t context;
+    mb_iocb_pool_t *cbpool;
+} mb_aiom_t;
+
+
 void mb_set_option(micbench_io_option_t *option);
 int parse_args(int argc, char **argv, micbench_io_option_t *option);
+
+mb_aiom_t *mb_aiom_make    (int nr_events);
+void       mb_aiom_destroy (mb_aiom_t *aiom);
+
+mb_iocb_pool_t *mb_iocb_pool_make    (int nr_events);
+void            mb_iocb_pool_destroy (mb_iocb_pool_t *pool);
+struct iocb *   mb_iocb_pool_pop     (mb_iocb_pool_t *pool);
+int             mb_iocb_pool_push    (mb_iocb_pool_t *pool, struct iocb *iocb);
 
 #define mb_read_or_write() \
     (option.read == true ? MB_DO_READ : \
