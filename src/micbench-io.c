@@ -310,15 +310,17 @@ void
 print_result(result_t *result)
 {
     printf("== result ==\n\
+exec_time     %lf [sec]\n\
 iops          %lf [blocks/sec]\n\
 response_time %lf [sec]\n\
 transfer_rate %lf [MiB/sec]\n\
 accum_io_time %lf [sec]\n\
 ",
-            result->iops,
-            result->response_time,
-            result->bandwidth / MEBI,
-            result->iowait_time);
+           result->exec_time,
+           result->iops,
+           result->response_time,
+           result->bandwidth / MEBI,
+           result->iowait_time);
 }
 
 int
