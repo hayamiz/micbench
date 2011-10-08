@@ -476,38 +476,24 @@ do_async_io(th_arg_t *arg)
 {
     int fd;
     meter_t *meter;
-    io_context_t *ctx;
     struct timeval start_tv;
     int64_t ofst;
     int64_t addr;
-    int num_flying_ioreq;
     int n;
-    int i;
-    struct iocb **iocbp_array;
-    struct iocb *iocbp;
     char *buf;
-    int ret;
-    struct io_event *events;
-
-    // TODO: recycle iocb
-    // TODO: recycle buffer for IO
+    mb_aiom_t *aiom;
 
     fd = arg->fd;
-    num_flying_ioreq = 0;
     meter = arg->meter;
-    ctx = malloc(sizeof(io_context_t));
-    bzero(ctx, sizeof(io_context_t));
-    events = malloc(sizeof(struct io_event) * option.aio_nr_events);
-    bzero(events, sizeof(struct io_event) * option.aio_nr_events);
-    iocbp_array = malloc(sizeof(struct iocb *) * option.aio_nr_events);
-    bzero(iocbp_array, sizeof(struct iocb *) * option.aio_nr_events);
+    aiom = mb_aiom_make(option.aio_nr_events);
+    buf = malloc(option.blk_sz);
+    bzero(buf, option.blk_sz);
+
     if (option.seq) {
         ofst = option.ofst_start + (option.ofst_end - option.ofst_start) * arg->id / option.multi;
     } else {
         ofst = 0;
     }
-
-    io_queue_init(option.aio_nr_events, ctx);
 
     if (option.read == false && option.write == false) {
         fprintf(stderr, "Only read or write can be specified in seq.");
@@ -516,13 +502,7 @@ do_async_io(th_arg_t *arg)
 
     GETTIMEOFDAY(&start_tv);
     while(mb_elapsed_time_from(&start_tv) < option.timeout) {
-        n = option.aio_nr_events - num_flying_ioreq;
-        for(i = 0; i < n; i++) {
-            iocbp = malloc(sizeof(struct iocb));
-            bzero(iocbp, sizeof(struct iocb));
-            buf = malloc(option.blk_sz);
-            bzero(buf, option.blk_sz);
-
+        while(mb_aiom_nr_submittable(aiom) > 0) {
             if (option.rand) {
                 ofst = (int64_t) mb_rand_range_long(option.ofst_start,
                                                     option.ofst_end);
@@ -530,31 +510,23 @@ do_async_io(th_arg_t *arg)
             addr = ofst * option.blk_sz + option.misalign;
 
             if (mb_read_or_write() == MB_DO_READ) {
-                io_prep_pread(iocbp, fd, buf, option.blk_sz, ofst * option.blk_sz);
+                mb_aiom_prep_pread(aiom, fd, buf, option.blk_sz, ofst * option.blk_sz);
             } else {
-                io_prep_pwrite(iocbp, fd, buf, option.blk_sz, ofst * option.blk_sz);
+                mb_aiom_prep_pwrite(aiom, fd, buf, option.blk_sz, ofst * option.blk_sz);
             }
             ofst++;
-
-            io_set_callback(iocbp, mb_async_callback);
-            ret = io_submit(*ctx, 1, &iocbp);
-            if (1 != ret){
-                perror("do_async_io:io_submit failed");
-                exit(EXIT_FAILURE);
-            }
         }
-        num_flying_ioreq += n;
+        mb_aiom_submit(aiom);
 
-        if (0 >= (n = io_getevents(*ctx, 1, option.aio_nr_events, events, NULL))) {
-            perror("do_async_io:io_getevents failed");
+        if (0 >= (n = mb_aiom_wait(aiom, NULL))) {
+            perror("do_async_io:mb_aiom_wait failed");
             exit(EXIT_FAILURE);
         }
-        for(i = 0; i < n; i++){
-            mb_async_callback(*ctx, events[i].obj, 0, 0);
-        }
         meter->count += n;
-        num_flying_ioreq -= n;
     }
+
+    free(buf);
+    mb_aiom_destroy(aiom);
 }
 
 void
