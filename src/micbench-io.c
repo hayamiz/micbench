@@ -167,6 +167,33 @@ mb_aiom_wait(mb_aiom_t *aiom, struct timespec *timeout)
 }
 
 int
+mb_aiom_waitall(mb_aiom_t *aiom)
+{
+    int nr;
+    int i;
+    struct iocb *iocb;
+    struct io_event *event;
+
+    nr = io_getevents(aiom->context,
+                      aiom->nr_inflight,
+                      aiom->nr_inflight,
+                      aiom->events,
+                      NULL);
+    aiom->nr_inflight -= nr;
+
+    for(i = 0; i < nr; i++){
+        event = &aiom->events[i];
+        iocb = event->obj;
+
+        // TODO: callback or something
+
+        mb_res_pool_push(aiom->cbpool, iocb);
+    }
+
+    return nr;
+}
+
+int
 mb_aiom_nr_submittable(mb_aiom_t *aiom)
 {
     return aiom->cbpool->nr_avail;

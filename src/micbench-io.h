@@ -97,6 +97,7 @@ int          mb_aiom_submit_pread   (mb_aiom_t *aiom, int fd,
 int          mb_aiom_submit_pwrite  (mb_aiom_t *aiom, int fd,
                                      void *buf, size_t count, long long offset);
 int          mb_aiom_wait           (mb_aiom_t *aiom, struct timespec *timeout);
+int          mb_aiom_waitall        (mb_aiom_t *aiom);
 int          mb_aiom_nr_submittable (mb_aiom_t *aiom);
 
 mb_res_pool_t *mb_res_pool_make    (int nr_events);

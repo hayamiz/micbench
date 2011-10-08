@@ -38,6 +38,7 @@ void test_mb_aiom_prep_pwrite(void);
 void test_mb_aiom_submit_pread(void);
 void test_mb_aiom_submit_pwrite(void);
 void test_mb_aiom_wait(void);
+void test_mb_aiom_waitall(void);
 void test_mb_aiom_nr_submittable(void);
 
 void test_mb_res_pool_make(void);
@@ -570,6 +571,46 @@ test_mb_aiom_wait(void)
                              NULL);
 
     cut_assert_equal_int(2, mb_aiom_wait(aiom, NULL));
+
+    cut_assert_equal_int(0, aiom->nr_inflight);
+    cut_assert_equal_int(64, mb_aiom_nr_submittable(aiom));
+
+    mb_mock_finish();
+}
+
+void
+test_mb_aiom_waitall(void)
+{
+    mb_mock_init();
+
+    int fd = 3;
+    char buf[512];
+    long long offset = 3456;
+
+    aiom = mb_aiom_make(64);
+
+    mb_aiom_prep_pread(aiom, fd, buf, 512, offset);
+    mb_aiom_prep_pread(aiom, fd, buf, 512, offset + 512);
+
+    mb_mock_assert_will_call("io_submit",
+                             MOCK_ARG_PTR, aiom->context,
+                             MOCK_ARG_LONG, 2,
+                             MOCK_ARG_SKIP, NULL,
+                             NULL);
+    mb_aiom_submit(aiom);
+
+    cut_assert_equal_int(0, aiom->nr_pending);
+    cut_assert_equal_int(2, aiom->nr_inflight);
+
+    mb_mock_assert_will_call("io_getevents",
+                             MOCK_ARG_PTR, aiom->context,
+                             MOCK_ARG_LONG, 2,
+                             MOCK_ARG_LONG, 2,
+                             MOCK_ARG_SKIP, NULL,
+                             MOCK_ARG_PTR, NULL,
+                             NULL);
+
+    cut_assert_equal_int(2, mb_aiom_waitall(aiom));
 
     cut_assert_equal_int(0, aiom->nr_inflight);
     cut_assert_equal_int(64, mb_aiom_nr_submittable(aiom));
