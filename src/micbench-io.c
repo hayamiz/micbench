@@ -473,13 +473,6 @@ mb_set_option(micbench_io_option_t *option_)
 }
 
 void
-mb_async_callback(io_context_t ctx, struct iocb *iocbp, long res, long res2)
-{
-    // free(iocbp->data);
-    free(iocbp);
-}
-
-void
 do_async_io(th_arg_t *arg)
 {
     int fd;
@@ -488,7 +481,8 @@ do_async_io(th_arg_t *arg)
     int64_t ofst;
     int64_t addr;
     int n;
-    char *buf;
+    int i;
+    void *buf;
     mb_aiom_t *aiom;
     mb_res_pool_t *buffer_pool;
 
@@ -498,6 +492,10 @@ do_async_io(th_arg_t *arg)
     buf = malloc(option.blk_sz);
     bzero(buf, option.blk_sz);
     buffer_pool = mb_res_pool_make(option.aio_nr_events);
+    for(i = 0; i < option.aio_nr_events; i++){
+        buf = malloc(option.blk_sz);
+        mb_res_pool_push(buffer_pool, buf);
+    }
 
     if (option.seq) {
         ofst = option.ofst_start + (option.ofst_end - option.ofst_start) * arg->id / option.multi;
@@ -519,6 +517,7 @@ do_async_io(th_arg_t *arg)
             }
             addr = ofst * option.blk_sz + option.misalign;
 
+            buf = mb_res_pool_pop(buffer_pool);
             if (mb_read_or_write() == MB_DO_READ) {
                 mb_aiom_prep_pread(aiom, fd, buf, option.blk_sz, ofst * option.blk_sz);
             } else {
@@ -532,10 +531,17 @@ do_async_io(th_arg_t *arg)
             perror("do_async_io:mb_aiom_wait failed");
             exit(EXIT_FAILURE);
         }
+
+        for(i = 0; i < n; i++) {
+            struct io_event *event;
+            event = &aiom->events[i];
+
+            mb_res_pool_push(buffer_pool, event->obj->u.c.buf);
+        }
+
         meter->count += n;
     }
 
-    free(buf);
     mb_aiom_destroy(aiom);
 }
 
@@ -714,7 +720,6 @@ micbench_io_main(int argc, char **argv)
         perror("main:open(2)");
         exit(EXIT_FAILURE);
     }
-    fprintf(stderr, "fd = %d\n", fd);
 
     for(i = 0;i < option.multi;i++){
         th_args[i].id          = i;
