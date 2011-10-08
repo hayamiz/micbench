@@ -47,8 +47,14 @@ mb_aiom_make(int nr_events)
     bzero(aiom, sizeof(mb_aiom_t));
 
     aiom->nr_events = nr_events;
-    io_setup(nr_events, &aiom->context);
+    aiom->nr_pending = 0;
+    aiom->nr_inflight = 0;
+
+    aiom->pending = malloc(sizeof(struct iocb *) * nr_events);
+    aiom->events = malloc(sizeof(struct io_event) * nr_events);
     aiom->cbpool = mb_iocb_pool_make(nr_events);
+
+    io_setup(nr_events, &aiom->context);
 
     return aiom;
 }
@@ -56,36 +62,100 @@ mb_aiom_make(int nr_events)
 void
 mb_aiom_destroy (mb_aiom_t *aiom)
 {
+    free(aiom->pending);
+    free(aiom->events);
     io_destroy(aiom->context);
+    mb_iocb_pool_destroy(aiom->cbpool);
     free(aiom);
 }
 
 int
-mb_aiom_submit(mb_aiom_t *aiom, int nr, struct iocb **iocbpp)
+mb_aiom_submit(mb_aiom_t *aiom)
 {
-    return io_submit(aiom->context, nr, iocbpp);
+    int ret;
+
+    if (aiom->nr_pending == 0) {
+        return 0;
+    }
+
+    ret = io_submit(aiom->context, aiom->nr_pending, aiom->pending);
+
+    if (ret != aiom->nr_pending) {
+        return -1;
+    }
+
+    aiom->nr_inflight = aiom->nr_pending;
+    aiom->nr_pending = 0;
+
+    return ret;
+}
+
+struct iocb *
+mb_aiom_prep_pread   (mb_aiom_t *aiom, int fd,
+                      void *buf, size_t count, long long offset)
+{
+    struct iocb *iocbp;
+    if (NULL == (iocbp = mb_iocb_pool_pop(aiom->cbpool))) {
+        return NULL;
+    }
+    io_prep_pread(iocbp, fd, buf, count, offset);
+
+    aiom->pending[aiom->nr_pending++] = iocbp;
+
+    return iocbp;
+}
+
+struct iocb *
+mb_aiom_prep_pwrite  (mb_aiom_t *aiom, int fd,
+                      void *buf, size_t count, long long offset)
+{
+    struct iocb *iocbp;
+    if (NULL == (iocbp = mb_iocb_pool_pop(aiom->cbpool))) {
+        return NULL;
+    }
+    io_prep_pwrite(iocbp, fd, buf, count, offset);
+
+    aiom->pending[aiom->nr_pending++] = iocbp;
+
+    return iocbp;
 }
 
 int
 mb_aiom_submit_pread (mb_aiom_t *aiom, int fd, void *buf, size_t count, long long offset)
 {
-    struct iocb *iocbp;
-
-    if (NULL == (iocbp = mb_iocb_pool_pop(aiom->cbpool))) {
-        return -1;
-    }
-
-    io_prep_pread(iocbp, fd, buf, count, offset);
-
-    return mb_aiom_submit(aiom, 1, &iocbp);
+    mb_aiom_prep_pread(aiom, fd, buf, count, offset);
+    return mb_aiom_submit(aiom);
 }
 
 int
 mb_aiom_submit_pwrite(mb_aiom_t *aiom, int fd, void *buf, size_t count, long long offset)
 {
-    return -1;
+    mb_aiom_prep_pwrite(aiom, fd, buf, count, offset);
+    return mb_aiom_submit(aiom);
 }
 
+int
+mb_aiom_wait(mb_aiom_t *aiom, struct timespec *timeout)
+{
+    int nr;
+    int i;
+    struct iocb *iocb;
+    struct io_event *event;
+
+    nr = io_getevents(aiom->context, 1, aiom->nr_inflight, aiom->events, timeout);
+    aiom->nr_inflight -= nr;
+
+    for(i = 0; i < nr; i++){
+        event = &aiom->events[i];
+        iocb = event->obj;
+
+        // TODO: callback or something
+
+        mb_iocb_pool_push(aiom->cbpool, iocb);
+    }
+
+    return nr;
+}
 
 mb_iocb_pool_t *
 mb_iocb_pool_make(int nr_events)
