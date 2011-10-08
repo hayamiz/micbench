@@ -157,6 +157,12 @@ mb_aiom_wait(mb_aiom_t *aiom, struct timespec *timeout)
     return nr;
 }
 
+int
+mb_aiom_nr_submittable(mb_aiom_t *aiom)
+{
+    return aiom->cbpool->nfree;
+}
+
 mb_iocb_pool_t *
 mb_iocb_pool_make(int nr_events)
 {
