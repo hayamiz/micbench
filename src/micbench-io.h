@@ -53,25 +53,25 @@ typedef enum {
     MB_DO_WRITE,
 } mb_io_mode_t;
 
-typedef struct mb_iocb_pool_cell {
-    struct iocb *iocb;
-    struct mb_iocb_pool_cell *next;
-} mb_iocb_pool_cell_t;
+typedef struct mb_res_pool_cell {
+    void *data;
+    struct mb_res_pool_cell *next;
+} mb_res_pool_cell_t;
 
-// AIO control block pool
+// resource pool
 typedef struct {
     int size;
-    int nfree;
-    mb_iocb_pool_cell_t *iocbs; // ring buffer
-    mb_iocb_pool_cell_t *head;
-    mb_iocb_pool_cell_t *tail;
-} mb_iocb_pool_t;
+    int nr_avail;
+    mb_res_pool_cell_t *ring; // ring buffer
+    mb_res_pool_cell_t *head;
+    mb_res_pool_cell_t *tail;
+} mb_res_pool_t;
 
 
 // AIO manager
 typedef struct {
     io_context_t context;
-    mb_iocb_pool_t *cbpool;
+    mb_res_pool_t *cbpool;
 
     int nr_events;
     int nr_pending;
@@ -99,10 +99,10 @@ int          mb_aiom_submit_pwrite  (mb_aiom_t *aiom, int fd,
 int          mb_aiom_wait           (mb_aiom_t *aiom, struct timespec *timeout);
 int          mb_aiom_nr_submittable (mb_aiom_t *aiom);
 
-mb_iocb_pool_t *mb_iocb_pool_make    (int nr_events);
-void            mb_iocb_pool_destroy (mb_iocb_pool_t *pool);
-struct iocb *   mb_iocb_pool_pop     (mb_iocb_pool_t *pool);
-int             mb_iocb_pool_push    (mb_iocb_pool_t *pool, struct iocb *iocb);
+mb_res_pool_t *mb_res_pool_make    (int nr_events);
+void           mb_res_pool_destroy (mb_res_pool_t *pool);
+struct iocb *  mb_res_pool_pop     (mb_res_pool_t *pool);
+int            mb_res_pool_push    (mb_res_pool_t *pool, struct iocb *iocb);
 
 #define mb_read_or_write() \
     (option.read == true ? MB_DO_READ : \

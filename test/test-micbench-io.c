@@ -8,7 +8,7 @@ static micbench_io_option_t option;
 static gchar *dummy_file;
 static char *argv[1024];
 static mb_aiom_t *aiom;
-static mb_iocb_pool_t *cbpool;
+static mb_res_pool_t *cbpool;
 static struct iocb *iocb;
 static GList *freed_list;
 static GList *will_free_list;
@@ -40,10 +40,9 @@ void test_mb_aiom_submit_pwrite(void);
 void test_mb_aiom_wait(void);
 void test_mb_aiom_nr_submittable(void);
 
-void test_mb_iocb_pool_make(void);
-void test_mb_iocb_pool_destroy(void);
-void test_mb_iocb_pool_push(void);
-void test_mb_iocb_pool_pop(void);
+void test_mb_res_pool_make(void);
+void test_mb_res_pool_destroy(void);
+void test_mb_res_pool_push_and_pop(void);
 
 /* ---- utility function prototypes ---- */
 static int argc(void);
@@ -128,7 +127,7 @@ cut_teardown(void)
     if (iocb != NULL)
         free(iocb);
     if (cbpool != NULL)
-        mb_iocb_pool_destroy(cbpool);
+        mb_res_pool_destroy(cbpool);
 }
 
 /* ---- utility function bodies ---- */
@@ -343,10 +342,13 @@ test_mb_aiom_make(void)
     aiom = mb_aiom_make(64);
     cut_assert_not_null(aiom);
     cut_assert_equal_int(64, aiom->nr_events);
+    cut_assert_equal_int(0, aiom->nr_inflight);
+    cut_assert_equal_int(0, aiom->nr_pending);
     cut_assert_not_equal_intptr(0, aiom->context);
     cut_assert_not_null(aiom->cbpool);
     cut_assert_not_null(aiom->pending);
     cut_assert_not_null(aiom->events);
+    cut_assert_equal_int(64, mb_aiom_nr_submittable(aiom));
 
     mb_mock_finish();
 }
@@ -476,7 +478,7 @@ test_mb_aiom_submit_pread(void)
                              MOCK_ARG_SKIP, NULL,
                              NULL);
     // pick to-be-used iocb
-    struct iocb *head = aiom->cbpool->head->iocb;
+    struct iocb *head = aiom->cbpool->head->data;
 
     cut_assert_equal_int(0, aiom->nr_inflight);
 
@@ -510,7 +512,7 @@ test_mb_aiom_submit_pwrite(void)
                              MOCK_ARG_INT, 1,
                              MOCK_ARG_SKIP, NULL,
                              NULL);
-    struct iocb *head = aiom->cbpool->head->iocb;
+    struct iocb *head = aiom->cbpool->head->data;
 
     cut_assert_equal_int(0, aiom->nr_inflight);
 
@@ -588,82 +590,74 @@ test_mb_aiom_nr_submittable(void)
 }
 
 void
-test_mb_iocb_pool_make(void)
+test_mb_res_pool_make(void)
 {
-    cbpool = mb_iocb_pool_make(64);
+    cbpool = mb_res_pool_make(64);
     cut_assert_not_null(cbpool);
-    cut_assert_not_null(cbpool->iocbs);
+    cut_assert_not_null(cbpool->ring);
     cut_assert_not_null(cbpool->head);
     cut_assert_not_null(cbpool->tail);
     cut_assert_equal_int(64, cbpool->size);
-    cut_assert_equal_pointer(cbpool->iocbs, cbpool->head);
-    cut_assert_false(cbpool->iocbs == cbpool->tail);
+    cut_assert_equal_pointer(cbpool->ring, cbpool->head);
+    cut_assert_false(cbpool->ring == cbpool->tail);
 
     // check it is a ring
     int i;
-    mb_iocb_pool_cell_t *cell;
-    for(cell = cbpool->iocbs, i = 0; i < 64; cell = cell->next, i++){}
-    cut_assert_equal_pointer(cbpool->iocbs, cell);
+    mb_res_pool_cell_t *cell;
+    for(cell = cbpool->ring, i = 0; i < 64; cell = cell->next, i++){}
+    cut_assert_equal_pointer(cbpool->ring, cell);
 
-    // initially a pool is fullfilled with 'free' iocbs
-    cut_assert_equal_int(64, cbpool->nfree);
+    // initially a pool is empty
+    cut_assert_equal_int(0, cbpool->nr_avail);
 }
 
 void
-test_mb_iocb_pool_destroy(void)
+test_mb_res_pool_destroy(void)
 {
-    mb_iocb_pool_cell_t *cell;
-    cbpool = mb_iocb_pool_make(64);
-    cell = cbpool->iocbs;
+    mb_res_pool_cell_t *cell;
+    cbpool = mb_res_pool_make(64);
+    cell = cbpool->ring;
 
     mb_assert_will_free(cbpool);
-    mb_assert_will_free(cbpool->iocbs);
-    cell = cbpool->iocbs->next;
-    for(; cell != cbpool->iocbs; cell = cell->next) {
+    mb_assert_will_free(cbpool->ring);
+    cell = cbpool->ring->next;
+    for(; cell != cbpool->ring; cell = cell->next) {
         mb_assert_will_free(cell);
-        mb_assert_will_free(cell->iocb);
+        mb_assert_will_free(cell->data);
     }
 
-    mb_iocb_pool_destroy(cbpool);
+    mb_res_pool_destroy(cbpool);
 }
 
 void
-test_mb_iocb_pool_pop(void)
+test_mb_res_pool_push_and_pop(void)
 {
     int i;
+    struct iocb *iocb;
 
-    cbpool = mb_iocb_pool_make(64);
-    // the pool is full with 64 'free' iocbs
+    cbpool = mb_res_pool_make(64);
+
     for(i = 0; i < 64; i++) {
-        iocb = mb_iocb_pool_pop(cbpool);
+        iocb = malloc(sizeof(struct iocb));
+        cut_assert_equal_int(i, cbpool->nr_avail);
+        cut_assert_equal_int(0, mb_res_pool_push(cbpool, iocb));
+    }
+
+    cut_assert_equal_int(64, cbpool->nr_avail);
+    iocb = malloc(sizeof(struct iocb));
+
+    // pushing into full pool fails
+    cut_take_memory(iocb);
+    cut_assert_equal_int(-1, mb_res_pool_push(cbpool, iocb));
+
+    for(i = 0; i < 64; i++) {
+        iocb = mb_res_pool_pop(cbpool);
         cut_assert_not_null(iocb);
-        cut_assert_equal_int(64 - i - 1, cbpool->nfree,
+        cut_assert_equal_int(64 - i - 1, cbpool->nr_avail,
                              cut_message("poped %d iocbs", i+1));
     }
 
     // now the pool is empty and pop fails
-    iocb = mb_iocb_pool_pop(cbpool);
+    iocb = mb_res_pool_pop(cbpool);
     cut_assert_null(iocb);
-}
-
-void
-test_mb_iocb_pool_push(void)
-{
-    cbpool = mb_iocb_pool_make(64);
-    iocb = malloc(sizeof(struct iocb));
-    bzero(iocb, sizeof(struct iocb));
-
-    // check it is full
-    cut_assert_equal_int(64, cbpool->nfree);
-
-    // pushing into full pool fails
-    cut_assert_equal_int(-1, mb_iocb_pool_push(cbpool, iocb));
-
-    // pops 1 iocb
-    cut_assert_not_null(cut_take_memory(mb_iocb_pool_pop(cbpool)));
-
-    // this time push succeed
-    cut_assert_equal_int(0, mb_iocb_pool_push(cbpool, iocb));
-
-    iocb = NULL;
 }
