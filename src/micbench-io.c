@@ -93,7 +93,7 @@ mb_aiom_submit(mb_aiom_t *aiom)
         return -1;
     }
 
-    aiom->nr_inflight = aiom->nr_pending;
+    aiom->nr_inflight += aiom->nr_pending;
     aiom->nr_pending = 0;
 
     return ret;
@@ -568,6 +568,8 @@ do_async_io(th_arg_t *arg)
 
         meter->count += n;
     }
+
+    meter->count += mb_aiom_waitall(aiom);
 
     mb_aiom_destroy(aiom);
 }

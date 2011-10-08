@@ -33,6 +33,7 @@ void test_mb_aiom_make(void);
 
 void test_mb_aiom_build_blocks(void);
 void test_mb_aiom_submit(void);
+void test_mb_aiom_submit_twice(void);
 void test_mb_aiom_prep_pread(void);
 void test_mb_aiom_prep_pwrite(void);
 void test_mb_aiom_submit_pread(void);
@@ -404,6 +405,59 @@ test_mb_aiom_submit(void)
                              NULL);
 
     cut_assert_equal_int(64, mb_aiom_submit(aiom));
+
+    cut_assert_equal_int(0, aiom->nr_pending);
+    cut_assert_equal_int(64, aiom->nr_inflight);
+
+    mb_mock_finish();
+}
+
+void
+test_mb_aiom_submit_twice(void)
+{
+    mb_mock_init();
+
+    int i;
+    int fd = 3;
+    char buf[512];
+
+    aiom = mb_aiom_make(64);
+
+    cut_assert_equal_int(0, aiom->nr_pending);
+    cut_assert_equal_int(0, aiom->nr_inflight);
+
+     for(i = 0; i < 32; i++) {
+        mb_aiom_prep_pread(aiom, fd, buf, 512, i * 512);
+    }
+
+    cut_assert_equal_int(32, aiom->nr_pending);
+    cut_assert_equal_int(0, aiom->nr_inflight);
+
+    mb_mock_assert_will_call("io_submit",
+                             MOCK_ARG_PTR, aiom->context,
+                             MOCK_ARG_INT, 32,
+                             MOCK_ARG_SKIP, NULL,
+                             NULL);
+
+    cut_assert_equal_int(32, mb_aiom_submit(aiom));
+
+    cut_assert_equal_int(0, aiom->nr_pending);
+    cut_assert_equal_int(32, aiom->nr_inflight);
+
+    for(i = 0; i < 32; i++) {
+        mb_aiom_prep_pread(aiom, fd, buf, 512, i * 512);
+    }
+
+    cut_assert_equal_int(32, aiom->nr_pending);
+    cut_assert_equal_int(32, aiom->nr_inflight);
+
+    mb_mock_assert_will_call("io_submit",
+                             MOCK_ARG_PTR, aiom->context,
+                             MOCK_ARG_INT, 32,
+                             MOCK_ARG_SKIP, NULL,
+                             NULL);
+
+    cut_assert_equal_int(32, mb_aiom_submit(aiom));
 
     cut_assert_equal_int(0, aiom->nr_pending);
     cut_assert_equal_int(64, aiom->nr_inflight);
