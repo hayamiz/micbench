@@ -530,6 +530,7 @@ class IoCommand < BaseCommand
                         "-c", @options[:bogus_comp],
                         (@options[:direct] ? "-d" : []),
                         (@options[:async] ? "-A" : []),
+                        "-E", @options[:aio_nr_events],
                         (@options[:mode] == :write ? "-W" :
                          @options[:mode] == :rwmix ? ["-M", @options[:rwmix].to_s] :
                          []),
