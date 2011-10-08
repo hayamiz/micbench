@@ -43,6 +43,9 @@ mb_mock_finish_iterator(void *_key, void *_value, void *_user_data)
         case MOCK_ARG_INT:
             g_string_append_printf(msg, "%d, ", mock_arg->u._int);
             break;
+        case MOCK_ARG_LONG:
+            g_string_append_printf(msg, "%ld, ", mock_arg->u._long);
+            break;
         case MOCK_ARG_PTR:
             g_string_append_printf(msg, "%p, ", mock_arg->u._ptr);
             break;
@@ -82,8 +85,8 @@ void mb_mock_finish(void)
     __fail_msg = fail_msg;
     fail_msg = NULL;
 
-    if (__fail_msg)
-        cut_fail("%s", fail_msg);
+    if (__fail_msg != NULL)
+        cut_fail("%s", __fail_msg);
 }
 
 void
@@ -118,6 +121,9 @@ mb_mock_assert_will_call(const char *fname, ...)
         case MOCK_ARG_INT:
             mock_arg->u._int = va_arg(args, int);
             break;
+        case MOCK_ARG_LONG:
+            mock_arg->u._long = va_arg(args, long);
+            break;
         case MOCK_ARG_PTR:
             mock_arg->u._ptr = va_arg(args, void *);
             break;
@@ -148,6 +154,7 @@ mb_mock_check(const char *fname, ...)
     int i;
 
     int int_arg;
+    long long_arg;
     void *ptr_arg;
 
     if (will_call_table == NULL)
@@ -173,6 +180,13 @@ mb_mock_check(const char *fname, ...)
             int_arg = va_arg(args, int);
             cut_assert_equal_int(
                 mock_arg->u._int, int_arg,
+                cut_message("%d-th arg of %s",
+                            i, fname));
+            break;
+        case MOCK_ARG_LONG:
+            long_arg = va_arg(args, long);
+            cut_assert_equal_int_least64(
+                mock_arg->u._long, long_arg,
                 cut_message("%d-th arg of %s",
                             i, fname));
             break;

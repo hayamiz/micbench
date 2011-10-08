@@ -15,6 +15,7 @@
 typedef enum {
     MOCK_ARG_SKIP = 1,
     MOCK_ARG_INT,
+    MOCK_ARG_LONG,
     MOCK_ARG_PTR,
 } mb_mock_arg_type_t;
 
@@ -22,6 +23,7 @@ typedef struct {
     mb_mock_arg_type_t type;
     union {
         int _int; // MOCK_ARG_INT
+        long _long; // MOCK_ARG_LONG
         void *_ptr; // MOCK_ARG_PTR
     } u;
 } mb_mock_arg_t;
