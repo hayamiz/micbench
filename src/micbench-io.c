@@ -514,6 +514,10 @@ do_async_io(th_arg_t *arg)
     fd = arg->fd;
     meter = arg->meter;
     aiom = mb_aiom_make(option.aio_nr_events);
+    if (aiom == NULL) {
+        perror("do_async_io:mb_aiom_make failed");
+        exit(EXIT_FAILURE);
+    }
     buf = malloc(option.blk_sz);
     bzero(buf, option.blk_sz);
     buffer_pool = mb_res_pool_make(option.aio_nr_events);
