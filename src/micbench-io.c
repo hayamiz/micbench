@@ -45,6 +45,7 @@ mb_aiom_make(int nr_events)
     mb_aiom_t *aiom;
     int i;
     struct iocb *iocb;
+    int ret;
 
     aiom = malloc(sizeof(mb_aiom_t));
 
@@ -64,7 +65,10 @@ mb_aiom_make(int nr_events)
         mb_res_pool_push(aiom->cbpool, iocb);
     }
 
-    io_setup(nr_events, &aiom->context);
+    bzero(&aiom->context, sizeof(io_context_t));
+    if ((ret = io_setup(nr_events, &aiom->context)) != 0) {
+        return NULL;
+    }
 
     return aiom;
 }
