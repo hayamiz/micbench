@@ -780,6 +780,36 @@ test_mb_aiom_nr_submittable(void)
 }
 
 void
+test_mb_aiom_iocount(void)
+{
+    int fd = 3;
+    char buf[512];
+    long long offset = 3456;
+
+    aiom = mb_aiom_make(64);
+
+    cut_assert_equal_int_least64(0, aiom->iocount);
+    mb_assert_res_pool_valid(aiom->cbpool);
+
+    mb_aiom_submit_pread(aiom, fd, buf, 512, offset);
+
+    cut_assert_equal_int_least64(0, aiom->iocount);
+    mb_assert_res_pool_valid(aiom->cbpool);
+
+    mb_aiom_waitall(aiom);
+
+    cut_assert_equal_int_least64(1, aiom->iocount);
+    mb_assert_res_pool_valid(aiom->cbpool);
+
+    mb_aiom_submit_pread(aiom, fd, buf, 512, offset);
+    mb_aiom_submit_pread(aiom, fd, buf, 512, offset);
+    mb_aiom_waitall(aiom);
+
+    cut_assert_equal_int_least64(3, aiom->iocount);
+    mb_assert_res_pool_valid(aiom->cbpool);
+}
+
+void
 test_mb_res_pool_make(void)
 {
     cbpool = mb_res_pool_make(64);
@@ -860,4 +890,40 @@ test_mb_res_pool_push_and_pop(void)
     // now the pool is empty and pop fails
     iocb = mb_res_pool_pop(cbpool);
     cut_assert_null(iocb);
+}
+
+void
+test_mb_res_pool_consistent(void)
+{
+    mb_res_pool_cell_t *cell;
+    mb_res_pool_t *pool;
+    void *ptr[64];
+    int i;
+
+    pool = mb_res_pool_make(64);
+
+    mb_assert_res_pool_valid(pool);
+
+    // populate data
+    for(i = 0; i < 64; i++) {
+        ptr[0] = (void *) cut_take_memory(malloc(16));
+        mb_res_pool_push(pool, ptr[0]);
+        mb_assert_will_not_free(ptr[0]);
+    }
+
+    mb_assert_res_pool_valid(pool);
+
+    ptr[0] = mb_res_pool_pop(pool);
+    mb_res_pool_push(pool, ptr[0]);
+
+    mb_assert_res_pool_valid(pool);
+
+    ptr[0] = mb_res_pool_pop(pool);
+    ptr[1] = mb_res_pool_pop(pool);
+    mb_res_pool_push(pool, ptr[0]);
+    mb_res_pool_push(pool, ptr[1]);
+
+    mb_assert_res_pool_valid(pool);
+
+    mb_res_pool_destroy(pool);
 }

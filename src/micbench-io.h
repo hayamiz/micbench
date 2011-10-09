@@ -77,6 +77,9 @@ typedef struct {
     int nr_pending;
     int nr_inflight;
 
+    // # of IO completed by this AIO manager
+    int64_t iocount;
+
     struct iocb **pending;
     struct io_event *events;
 } mb_aiom_t;

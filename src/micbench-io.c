@@ -47,11 +47,12 @@ mb_aiom_make(int nr_events)
     struct iocb *iocb;
 
     aiom = malloc(sizeof(mb_aiom_t));
-    bzero(aiom, sizeof(mb_aiom_t));
 
     aiom->nr_events = nr_events;
     aiom->nr_pending = 0;
     aiom->nr_inflight = 0;
+
+    aiom->iocount = 0;
 
     aiom->pending = malloc(sizeof(struct iocb *) * nr_events);
     aiom->events = malloc(sizeof(struct io_event) * nr_events);
@@ -71,9 +72,14 @@ mb_aiom_make(int nr_events)
 void
 mb_aiom_destroy (mb_aiom_t *aiom)
 {
+    struct iocb *iocb;
+
     free(aiom->pending);
     free(aiom->events);
     io_destroy(aiom->context);
+    while((iocb = mb_res_pool_pop(aiom->cbpool)) != NULL) {
+        free(iocb);
+    }
     mb_res_pool_destroy(aiom->cbpool);
     free(aiom);
 }
@@ -144,17 +150,18 @@ mb_aiom_submit_pwrite(mb_aiom_t *aiom, int fd, void *buf, size_t count, long lon
 }
 
 int
-mb_aiom_wait(mb_aiom_t *aiom, struct timespec *timeout)
-{
-    int nr;
+__mb_aiom_getevents(mb_aiom_t *aiom, long min_nr, long nr,
+                    struct io_event *events, struct timespec *timeout){
     int i;
+    int nr_completed;
     struct iocb *iocb;
     struct io_event *event;
 
-    nr = io_getevents(aiom->context, 1, aiom->nr_inflight, aiom->events, timeout);
-    aiom->nr_inflight -= nr;
+    nr_completed = io_getevents(aiom->context, min_nr, nr, events, timeout);
+    aiom->nr_inflight -= nr_completed;
+    aiom->iocount += nr_completed;
 
-    for(i = 0; i < nr; i++){
+    for(i = 0; i < nr_completed; i++){
         event = &aiom->events[i];
         iocb = event->obj;
 
@@ -163,34 +170,20 @@ mb_aiom_wait(mb_aiom_t *aiom, struct timespec *timeout)
         mb_res_pool_push(aiom->cbpool, iocb);
     }
 
-    return nr;
+    return nr_completed;
+}
+
+int
+mb_aiom_wait(mb_aiom_t *aiom, struct timespec *timeout)
+{
+    return __mb_aiom_getevents(aiom, 1, aiom->nr_inflight, aiom->events, timeout);
 }
 
 int
 mb_aiom_waitall(mb_aiom_t *aiom)
 {
-    int nr;
-    int i;
-    struct iocb *iocb;
-    struct io_event *event;
-
-    nr = io_getevents(aiom->context,
-                      aiom->nr_inflight,
-                      aiom->nr_inflight,
-                      aiom->events,
-                      NULL);
-    aiom->nr_inflight -= nr;
-
-    for(i = 0; i < nr; i++){
-        event = &aiom->events[i];
-        iocb = event->obj;
-
-        // TODO: callback or something
-
-        mb_res_pool_push(aiom->cbpool, iocb);
-    }
-
-    return nr;
+    return __mb_aiom_getevents(aiom, aiom->nr_inflight, aiom->nr_inflight,
+                               aiom->events, NULL);
 }
 
 int
@@ -240,7 +233,6 @@ mb_res_pool_destroy(mb_res_pool_t *pool)
     for(cell_next = NULL, cell = pool->ring;
         cell_next != pool->ring; cell = cell_next){
         cell_next = cell->next;
-        free(cell->data);
         free(cell);
     }
     free(pool);
