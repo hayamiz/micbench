@@ -96,7 +96,7 @@ mb_aiom_submit(mb_aiom_t *aiom)
     ret = io_submit(aiom->context, aiom->nr_pending, aiom->pending);
 
     if (ret != aiom->nr_pending) {
-        return -1;
+        return ret;
     }
 
     aiom->nr_inflight += aiom->nr_pending;
@@ -546,7 +546,17 @@ do_async_io(th_arg_t *arg)
             }
             ofst++;
         }
-        mb_aiom_submit(aiom);
+        if (0 >= (n = mb_aiom_submit(aiom))) {
+            perror("do_async_io:mb_aiom_submit failed");
+            switch(-n){
+            case EAGAIN : fprintf(stderr, "EAGAIN\n"); break;
+            case EBADF  : fprintf(stderr, "EBADF\n"); break;
+            case EFAULT : fprintf(stderr, "EFAULT\n"); break;
+            case EINVAL : fprintf(stderr, "EINVAL\n"); break;
+            case ENOSYS : fprintf(stderr, "ENOSYS\n"); break;
+            }
+            exit(EXIT_FAILURE);
+        }
 
         if (0 >= (n = mb_aiom_wait(aiom, NULL))) {
             perror("do_async_io:mb_aiom_wait failed");
