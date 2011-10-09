@@ -12,6 +12,7 @@ static mb_res_pool_t *cbpool;
 static struct iocb *iocb;
 static GList *freed_list;
 static GList *will_free_list;
+static GList *will_not_free_list;
 
 typedef struct {
     void *ptr;
@@ -41,24 +42,34 @@ void test_mb_aiom_submit_pwrite(void);
 void test_mb_aiom_wait(void);
 void test_mb_aiom_waitall(void);
 void test_mb_aiom_nr_submittable(void);
+void test_mb_aiom_iocount(void);
 
 void test_mb_res_pool_make(void);
 void test_mb_res_pool_destroy(void);
 void test_mb_res_pool_push_and_pop(void);
+void test_mb_res_pool_consistent(void);
 
 /* ---- utility function prototypes ---- */
 static int argc(void);
 static void my_free_hook(void *ptr, const void *caller);
-#define mb_assert_will_free(__ptr)                                      \
-    {                                                                   \
-        will_free_cell_t *__cell = malloc(sizeof(will_free_cell_t));    \
-        cut_take_memory(__cell);                                        \
-        __cell->ptr = __ptr;                                            \
-        __cell->exp = #__ptr;                                           \
-        __cell->fname = __FILE__;                                       \
-        __cell->lineno = __LINE__;                                      \
-        will_free_list = g_list_append(will_free_list, __cell);         \
-    }
+static void __mb_assert_will_free(const char *fname, int lineno, const char *exp,
+                                  void *ptr, ...);
+static void __mb_assert_will_not_free(const char *fname, int lineno, const char *exp,
+                                      void *ptr, ...);
+static void mb_check_will_free(void);
+static void mb_check_will_not_free(void);
+
+#define mb_assert_will_free(...)                                   \
+    mb_assert_will_free_helper(__VA_ARGS__, NULL);
+#define mb_assert_will_free_helper(ptr, ...)                                   \
+    __mb_assert_will_free(__FILE__, __LINE__, #ptr, ptr, __VA_ARGS__);
+
+#define mb_assert_will_not_free(...)                               \
+    mb_assert_will_not_free_helper(__VA_ARGS__, NULL);
+#define mb_assert_will_not_free_helper(ptr, ...)                               \
+    __mb_assert_will_not_free(__FILE__, __LINE__, #ptr, ptr,  __VA_ARGS__);
+
+static void mb_assert_res_pool_valid(mb_res_pool_t *pool);
 
 /* mocked function prototypes */
 // mocking libaio.h
@@ -79,6 +90,7 @@ cut_setup(void)
 
     freed_list = NULL;
     will_free_list = NULL;
+    will_not_free_list = NULL;
     __free_hook = my_free_hook;
     aiom = NULL;
     iocb = NULL;
@@ -94,36 +106,17 @@ cut_setup(void)
 void
 cut_teardown(void)
 {
-    /* check assertions by mb_assert_will_free */
-    GList *candidates;
-    for(candidates = will_free_list;
-        candidates != NULL;
-        candidates = candidates->next) {
-        GList *list;
-        will_free_cell_t *cell = (will_free_cell_t *) candidates->data;
-        bool found = false;
-        for(list = freed_list; list != NULL; list = list->next) {
-            if (cell->ptr == list->data) {
-                found = true;
-                break;
-            }
-        }
-        if (found == false) {
-            cut_assert_true(found,
-                            cut_message("%s (addr %p) should be freed (asserted at %s:%d)",
-                                        cell->exp,
-                                        cell->ptr,
-                                        cell->fname,
-                                        cell->lineno));
-        }
-    }
-
-
+    /* check assertions by mb_assert_will_free/mb_assert_will_not_free */
+    mb_check_will_free();
+    mb_check_will_not_free();
+    
     __free_hook = NULL;
     if (freed_list != NULL)
         g_list_free(freed_list);
     if (will_free_list != NULL)
         g_list_free(will_free_list);
+    if (will_not_free_list != NULL)
+        g_list_free(will_not_free_list);
     if (aiom != NULL)
         mb_aiom_destroy(aiom);
     if (iocb != NULL)
@@ -145,6 +138,98 @@ static void
 my_free_hook(void *ptr, const void *caller)
 {
     freed_list = g_list_append(freed_list, ptr);
+}
+
+static void
+__mb_assert_will_free(const char *fname, int lineno, const char *exp,
+                      void *ptr, ...)
+{
+    will_free_cell_t *cell = malloc(sizeof(will_free_cell_t));
+    cut_take_memory(cell);
+    cell->ptr = ptr;
+    cell->exp = exp;
+    cell->fname = fname;
+    cell->lineno = lineno;
+    will_free_list = g_list_append(will_free_list, cell);
+}
+
+static void
+__mb_assert_will_not_free(const char *fname, int lineno, const char *exp,
+                          void *ptr, ...)
+{
+    will_free_cell_t *cell = malloc(sizeof(will_free_cell_t));
+    cut_take_memory(cell);
+    cell->ptr = ptr;
+    cell->exp = exp;
+    cell->fname = fname;
+    cell->lineno = lineno;
+    will_not_free_list = g_list_append(will_not_free_list, cell);
+}
+
+static void
+mb_check_will_free(void)
+{
+    GList *candidates;
+    for(candidates = will_free_list;
+        candidates != NULL;
+        candidates = candidates->next) {
+        will_free_cell_t *cell = (will_free_cell_t *) candidates->data;
+
+        if (g_list_find(freed_list, cell->ptr) == NULL) {
+            cut_fail("%s (addr %p) should be freed (asserted at %s:%d)",
+                     cell->exp,
+                     cell->ptr,
+                     cell->fname,
+                     cell->lineno);
+        }
+    }
+}
+
+static void
+mb_check_will_not_free(void)
+{
+    GList *candidates;
+    for(candidates = will_not_free_list;
+        candidates != NULL;
+        candidates = candidates->next) {
+        will_free_cell_t *cell = (will_free_cell_t *) candidates->data;
+
+        if (g_list_find(freed_list, cell->ptr) != NULL) {
+            cut_fail("%s (addr %p) should not be freed (asserted at %s:%d)",
+                     cell->exp,
+                     cell->ptr,
+                     cell->fname,
+                     cell->lineno);
+        }
+    }
+}
+
+static void
+mb_assert_res_pool_valid(mb_res_pool_t *pool)
+{
+    mb_res_pool_cell_t *cell;
+    GHashTable *table;
+
+    table = g_hash_table_new(g_direct_hash, g_direct_equal);
+
+    if (pool->nr_avail == 0) {
+        return;
+    }
+    cell = pool->head;
+    do {
+        // check duplication of cell->data
+        if (g_hash_table_lookup(table, cell->data) != NULL) {
+            cut_fail("duplicated pointer in the pool");
+        }
+        g_hash_table_insert(table, cell->data, cell->data);
+
+        // check NULL
+        if (cell->data == NULL) {
+            cut_fail("NULL pointer in the pool");
+        }
+
+        cell = cell->next;
+    } while(cell != pool->tail->next);
 }
 
 /* ---- mocked function bodies ---- */
@@ -358,12 +443,21 @@ test_mb_aiom_make(void)
 void
 test_mb_aiom_destroy(void)
 {
+    struct iocb *iocb;
+    int i;
+
     aiom = mb_aiom_make(64);
 
     mb_assert_will_free(aiom);
     mb_assert_will_free(aiom->pending);
     mb_assert_will_free(aiom->events);
     mb_assert_will_free(aiom->cbpool);
+
+    for(i = 0; i < 64; i++) {
+        iocb = mb_res_pool_pop(aiom->cbpool);
+        mb_assert_will_free(iocb);
+        mb_res_pool_push(aiom->cbpool, iocb);
+    }
 
     mb_aiom_destroy(aiom);
     aiom = NULL;
@@ -710,18 +804,28 @@ void
 test_mb_res_pool_destroy(void)
 {
     mb_res_pool_cell_t *cell;
-    cbpool = mb_res_pool_make(64);
-    cell = cbpool->ring;
+    mb_res_pool_t *pool;
+    void *ptr;
+    int i;
 
-    mb_assert_will_free(cbpool);
-    mb_assert_will_free(cbpool->ring);
-    cell = cbpool->ring->next;
-    for(; cell != cbpool->ring; cell = cell->next) {
-        mb_assert_will_free(cell);
-        mb_assert_will_free(cell->data);
+    pool = mb_res_pool_make(64);
+    cell = pool->ring;
+
+    // populate some data
+    for(i = 0; i < 8; i++) {
+        ptr = (void *) cut_take_memory(malloc(16));
+        mb_res_pool_push(pool, ptr);
+        mb_assert_will_not_free(ptr);
     }
 
-    mb_res_pool_destroy(cbpool);
+    mb_assert_will_free(pool);
+    mb_assert_will_free(pool->ring);
+    cell = pool->ring->next;
+    for(; cell != pool->ring; cell = cell->next) {
+        mb_assert_will_free(cell);
+    }
+
+    mb_res_pool_destroy(pool);
 }
 
 void
