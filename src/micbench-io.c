@@ -559,11 +559,11 @@ do_async_io(th_arg_t *arg)
 
             mb_res_pool_push(buffer_pool, event->obj->u.c.buf);
         }
-
-        meter->count += n;
     }
 
-    meter->count += mb_aiom_waitall(aiom);
+    mb_aiom_waitall(aiom);
+
+    meter->count += aiom->iocount;
 
     mb_aiom_destroy(aiom);
 }
