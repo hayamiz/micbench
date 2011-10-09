@@ -276,6 +276,7 @@ int io_getevents(io_context_t ctx_id, long min_nr, long nr,
         ret++;
         events[i].obj = pseudo_io_queue[i];
     }
+    pseudo_io_queue_len = 0;
 
     return nr;
 }
