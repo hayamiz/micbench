@@ -616,16 +616,12 @@ do_sync_io(th_arg_t *th_arg)
                 ofst = (int64_t) mb_rand_range_long(option.ofst_start,
                                                     option.ofst_end);
                 addr = ofst * option.blk_sz + option.misalign;
-                if (lseek64(fd, addr, SEEK_SET) == -1){
-                    perror("do_sync_io:lseek64");
-                    exit(EXIT_FAILURE);
-                }
 
                 GETTIMEOFDAY(&timer);
                 if (mb_read_or_write() == MB_DO_READ) {
-                    mb_readall(fd, buf, option.blk_sz);
+                    mb_preadall(fd, buf, option.blk_sz, addr);
                 } else {
-                    mb_writeall(fd, buf, option.blk_sz);
+                    mb_pwriteall(fd, buf, option.blk_sz, addr);
                 }
                 iowait_time += mb_elapsed_time_from(&timer);
                 io_count ++;

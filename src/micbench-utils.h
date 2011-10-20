@@ -121,6 +121,24 @@ mb_readall(int fd, char *buf, size_t size)
 }
 
 static inline ssize_t
+mb_preadall(int fd, char *buf, size_t size, off_t offset)
+{
+    ssize_t ret;
+
+    ret = pread(fd, buf, size, offset);
+    if (ret == -1){
+        perror("pread(2) failed");
+        fprintf(stderr, "mb_preadall: fd=%d, buf=%p, size=%ld\n", fd, buf, size);
+        exit(EXIT_FAILURE);
+    } else if (ret != size) {
+        perror("pread(2) partially failed");
+        fprintf(stderr, "mb_preadall: fd=%d, buf=%p, size=%ld\n", fd, buf, size);
+    }
+
+    return size;
+}
+
+static inline ssize_t
 mb_writeall(int fd, const char *buf, size_t size)
 {
     size_t sz = size;
@@ -143,5 +161,22 @@ mb_writeall(int fd, const char *buf, size_t size)
     return size;
 }
 
+static inline ssize_t
+mb_pwriteall(int fd, char *buf, size_t size, off_t offset)
+{
+    ssize_t ret;
+
+    ret = pwrite(fd, buf, size, offset);
+    if (ret == -1){
+        perror("pwrite(2) failed");
+        fprintf(stderr, "mb_pwriteall: fd=%d, buf=%p, size=%ld\n", fd, buf, size);
+        exit(EXIT_FAILURE);
+    } else if (ret != size) {
+        perror("pwrite(2) partially failed");
+        fprintf(stderr, "mb_pwriteall: fd=%d, buf=%p, size=%ld\n", fd, buf, size);
+    }
+
+    return size;
+}
 
 #endif
