@@ -10,6 +10,8 @@ typedef struct {
 } thread_assignment_t;
 
 static micbench_io_option_t option;
+static FILE *aio_tracefile;
+static __thread pid_t tid;
 
 typedef struct {
     // accumulated iowait time
@@ -99,8 +101,15 @@ mb_aiom_submit(mb_aiom_t *aiom)
 
     ret = io_submit(aiom->context, aiom->nr_pending, aiom->pending);
 
+    if (aio_tracefile != NULL) {
+        fprintf(aio_tracefile,
+                "[%d] submit: %d req\n",
+                tid, ret);
+    }
+
     if (ret != aiom->nr_pending) {
-        return ret;
+        fprintf(stderr, "fatal error\n");
+        exit(EXIT_FAILURE);
     }
 
     aiom->nr_inflight += aiom->nr_pending;
@@ -164,6 +173,12 @@ __mb_aiom_getevents(mb_aiom_t *aiom, long min_nr, long nr,
     nr_completed = io_getevents(aiom->context, min_nr, nr, events, timeout);
     aiom->nr_inflight -= nr_completed;
     aiom->iocount += nr_completed;
+
+    if (aio_tracefile != NULL) {
+        fprintf(aio_tracefile,
+                "[%d] %d infl %d comp\n",
+                tid, aiom->nr_inflight, nr_completed);
+    }
 
     for(i = 0; i < nr_completed; i++){
         event = &aiom->events[i];
@@ -696,10 +711,12 @@ thread_handler(void *arg)
     th_arg_t *th_arg = (th_arg_t *) arg;
     mb_affinity_t *aff;
 
+    tid = syscall(SYS_gettid);
+
     if (option.affinities != NULL){
         aff = option.affinities[th_arg->id];
         if (aff != NULL){
-            sched_setaffinity(syscall(SYS_gettid),
+            sched_setaffinity(tid,
                               sizeof(cpu_set_t),
                               &aff->cpumask);
         }
@@ -766,6 +783,12 @@ micbench_io_main(int argc, char **argv)
     if ((fd = open(option.path, flags)) == -1){
         perror("main:open(2)");
         exit(EXIT_FAILURE);
+    }
+
+    if (option.aio_tracefile != NULL) {
+        aio_tracefile = fopen(option.aio_tracefile, "w");
+    } else {
+        aio_tracefile = NULL;
     }
 
     for(i = 0;i < option.multi;i++){
