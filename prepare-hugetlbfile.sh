@@ -1,2 +1,8 @@
-mount none -t hugetlbfs /mnt/hugetlbfile -o mode=0777
-echo $((1024*12*8)) > /proc/sys/vm/nr_hugepages 
+#!/bin/bash
+
+if ! [ -d /mnt/hugetlbfile ]; then
+    mkdir /mnt/hugetlbfile
+    mount none -t hugetlbfs /mnt/hugetlbfile -o mode=0777
+fi
+
+echo $((1024*4*4)) > /proc/sys/vm/nr_hugepages
