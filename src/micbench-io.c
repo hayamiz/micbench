@@ -556,7 +556,7 @@ do_async_io(th_arg_t *arg)
     bzero(buf, option.blk_sz);
     buffer_pool = mb_res_pool_make(option.aio_nr_events);
     for(i = 0; i < option.aio_nr_events; i++){
-        buf = memalign(option.blk_sz, option.blk_sz);
+        buf = memalign(512, option.blk_sz);
         mb_res_pool_push(buffer_pool, buf);
     }
 
