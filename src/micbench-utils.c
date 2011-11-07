@@ -183,13 +183,15 @@ mb_elapsed_usec_from(struct timeval *tv)
 unsigned long
 mb_rand_range_ulong(unsigned long from, unsigned long to)
 {
-    return ((unsigned long) ((to - from) * drand48())) + from;
+    unsigned long width = to - from;
+    return lrand48() % width + from;
 }
 
 long
 mb_rand_range_long(long from, long to)
 {
-    return ((long) ((to - from) * drand48())) + from;
+    long width = to - from;
+    return lrand48() % width + from;
 }
 
 int64_t
