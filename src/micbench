@@ -119,6 +119,9 @@ EOS
   def check_option()
   end
 
+  def reset_option()
+  end
+
   def do_cmd(argv)
     if ! argv.empty? && BaseCommand.commands[argv[0]]
       BaseCommand.commands[argv[0]].new().print_help
@@ -133,17 +136,6 @@ class MemoryCommand < BaseCommand
   command_name "mem", "memory latency and bandwidth benchmark"
 
   def init_option_parser()
-    @options[:multi] = 1
-    @options[:timeout] = 10
-    @options[:mode] = :seq
-    @options[:local] = false
-    @options[:affinity] = {}
-    @options[:size] = 2 ** 20
-    @options[:hugetlbfile] = nil
-    @options[:hugepagesize] = 2 * 2**20
-    @options[:verbose] = false
-    @options[:debug] = false
-
     parse_error = lambda do |*msg|
       if msg.size > 0
         msg.each do |m|
@@ -206,6 +198,19 @@ class MemoryCommand < BaseCommand
     @parser.on('--debug') do
       @options[:debug] = true
     end
+  end
+
+  def reset_option
+    @options[:multi] = 1
+    @options[:timeout] = 10
+    @options[:mode] = :seq
+    @options[:local] = false
+    @options[:affinity] = {}
+    @options[:size] = 2 ** 20
+    @options[:hugetlbfile] = nil
+    @options[:hugepagesize] = 2 * 2**20
+    @options[:verbose] = false
+    @options[:debug] = false
   end
 
   def check_option()
