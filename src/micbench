@@ -435,6 +435,10 @@ class IoCommand < BaseCommand
                "# of events per AIO context (default: 64).") do |num|
       @options[:aio_nr_events] = num.to_i
     end
+    @parser.on('-T', '--aio-tracefile FILE',
+               "Path to an AIO event trace log file.") do |file|
+      @options[:aio_tracefile] = file
+    end
     @parser.on('-b', '--blocksize SIZE',
               "Size of IO block (default: 16k)") do |size|
       unless @options[:blocksize] = parse_size(size)
@@ -484,6 +488,7 @@ class IoCommand < BaseCommand
     @options[:direct] = false
     @options[:async] = false
     @options[:aio_nr_events] = 64
+    @options[:aio_tracefile] = nil
     @options[:blocksize] = 16 * 1024
     @options[:offset_start] = 0
     @options[:offset_end] = 0
@@ -531,6 +536,8 @@ class IoCommand < BaseCommand
                         (@options[:direct] ? "-d" : []),
                         (@options[:async] ? "-A" : []),
                         "-E", @options[:aio_nr_events],
+                        (@options[:aio_tracefile] ?
+                         ["-T", @options[:aio_tracefile]] : []),
                         (@options[:mode] == :write ? "-W" :
                          @options[:mode] == :rwmix ? ["-M", @options[:rwmix].to_s] :
                          []),

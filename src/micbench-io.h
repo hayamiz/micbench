@@ -21,6 +21,9 @@ typedef struct {
     // aio nr_events per threads
     int aio_nr_events;
 
+    // file name of trace log of aio events
+    char *aio_tracefile;
+
     // thread affinity assignment
     mb_affinity_t **affinities;
 

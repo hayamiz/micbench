@@ -28,6 +28,7 @@ void test_parse_args_rw_modes(void);
 void test_parse_args_rwmix_mode(void);
 void test_parse_args_aio(void);
 void test_parse_args_aio_nr_events(void);
+void test_parse_args_aio_trace(void);
 void test_mb_read_or_write(void);
 
 void test_mb_aiom_make(void);
@@ -309,6 +310,7 @@ test_parse_args_defaults(void)
     cut_assert_equal_int(64 * KIBI, option.blk_sz);
     cut_assert_false(option.verbose);
     cut_assert_false(option.aio);
+    cut_assert_null(option.aio_tracefile);
     cut_assert_equal_int(64, option.aio_nr_events);
 }
 
@@ -356,6 +358,33 @@ test_parse_args_aio_nr_events(void)
     argv[argc()] = dummy_file;
     cut_assert_equal_int(0, parse_args(argc(), argv, &option));
     cut_assert_equal_int(1024, option.aio_nr_events);
+}
+
+void
+test_parse_args_aio_trace(void)
+{
+    const char *tracefile;
+
+    tracefile = cut_take_strdup("tracefileXXXXXX");
+
+    argv[argc()] = "-A";
+    argv[argc()] = "-T";
+    argv[argc()] = (char *) tracefile;
+    argv[argc()] = dummy_file;
+    cut_assert_equal_int(0, parse_args(argc(), argv, &option));
+    cut_assert_equal_string(tracefile, option.aio_tracefile);
+}
+
+void
+test_parse_args_aio_trace_fail(void)
+{
+    const char *tracefile;
+
+    // -T must be specified with -A
+    argv[argc()] = "-T";
+    argv[argc()] = (char *) cut_take_strdup("tracefileXXXXXX");
+    argv[argc()] = dummy_file;
+    cut_assert_not_equal_int(0, parse_args(argc(), argv, &option));
 }
 
 void
