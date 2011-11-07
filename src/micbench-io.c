@@ -58,8 +58,13 @@ mb_aiom_make(int nr_events)
     aiom->iocount = 0;
 
     aiom->pending = malloc(sizeof(struct iocb *) * nr_events);
+    bzero(aiom->pending, sizeof(struct iocb *) * nr_events);
+
     aiom->events = malloc(sizeof(struct io_event) * nr_events);
+    bzero(aiom->events, sizeof(struct io_event) * nr_events);
+
     aiom->cbpool = mb_res_pool_make(nr_events);
+
 
     for(i = 0; i < nr_events; i++) {
         iocb = malloc(sizeof(struct iocb));
@@ -185,6 +190,10 @@ __mb_aiom_getevents(mb_aiom_t *aiom, long min_nr, long nr,
         iocb = event->obj;
 
         // TODO: callback or something
+        if (!(event->res == option.blk_sz && event->res2 == 0)){
+            fprintf(stderr, "fatal error: res = %ld, res2 = %ld\n",
+                    (long) event->res, (long) event->res2);
+        }
 
         mb_res_pool_push(aiom->cbpool, iocb);
     }
@@ -547,7 +556,7 @@ do_async_io(th_arg_t *arg)
     bzero(buf, option.blk_sz);
     buffer_pool = mb_res_pool_make(option.aio_nr_events);
     for(i = 0; i < option.aio_nr_events; i++){
-        buf = malloc(option.blk_sz);
+        buf = memalign(option.blk_sz, option.blk_sz);
         mb_res_pool_push(buffer_pool, buf);
     }
 
