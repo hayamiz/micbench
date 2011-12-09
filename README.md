@@ -1,7 +1,7 @@
- MICBENCH: a benchmarking toolset
+ micbench: a benchmarking toolset
 ==================================
 
-MICBENCH is a set of programs for measuring basic performances of your machines.
+"micbench" is a set of programs for measuring basic performance of your machines.
 
   * micbench-io  : I/O performance
   * micbench-mem : Memory access performance
@@ -12,6 +12,8 @@ MICBENCH is a set of programs for measuring basic performances of your machines.
   * Ruby interpreter (1.8.7 or later)
   * numactl
   * libnuma
+
+Currently it also requires Nehalem or newer x86_64 architectures.
 
  How to build
 --------------
@@ -47,8 +49,8 @@ MICBENCH is a set of programs for measuring basic performances of your machines.
 
 The result `clk_per_op` shows how many clocks is needed to access the L1 cache of your processor.
 
-In random access mode of micbench-mem, each memory access has data
-dependency preceding memory access, and memory access instructions are
+In random access mode of micbench-mem, each memory access operation
+has data dependency on preceding operation, so all the operations are
 totally serialized in a pipeline of a processor. It means that
 dividing execution time by # of memory access operations is almost
 equal to the memory access latency of the processor. In this case,
@@ -59,6 +61,8 @@ cache. Therefore the results shows the access latency of the L1 cache.
 
  For Developers
 ----------------
+
+Latest source code is on GitHub: http://github.com/hayamiz/micbench/
 
 You can build micbench from scratch by executing commands below. In
 addition to prerequisites above, you need autotools to build.
