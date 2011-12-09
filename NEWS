@@ -1,0 +1,8 @@
+ NEWS of micbench
+==================
+
+## 2011-12-09: micbench 0.1.0 released
+
+  * The first release of micbench
+    * Consists of micbench-io and micbench-mem subcommands
+  * NIKU-release

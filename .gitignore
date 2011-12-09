@@ -31,3 +31,5 @@ Makefile
 /test/fixtures/*.sparse
 /src/micbench-btreplay
 /Gemfile.lock
+/README
+/micbench-*.tar.gz

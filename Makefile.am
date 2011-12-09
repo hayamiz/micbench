@@ -1,2 +1,5 @@
 ACLOCAL_AMFLAGS = $$ACLOCAL_ARGS
 SUBDIRS = src test
+
+README: README.md
+	cp $< $@

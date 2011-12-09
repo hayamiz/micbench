@@ -1,0 +1,12 @@
+
+ General 
+---------
+
+  * collaboration with PerfMonger ( http://github.com/hayamiz/perfmonger/ )
+    * performance recording and graph plotting
+
+
+ micbench-io
+-------------
+
+  * multiple device support
