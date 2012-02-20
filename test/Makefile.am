@@ -29,7 +29,7 @@ LIBADD = \
 test_micbench_utils_la_SOURCES = test-micbench-utils.c
 test_micbench_utils_la_LIBADD = $(LIBADD)
 
-test_micbench_io_la_SOURCES = test-micbench-io.c
+test_micbench_io_la_SOURCES = test-micbench-io.c micbench-test.h
 test_micbench_io_la_LIBADD =			\
 	$(LIBADD)				\
 	$(top_builddir)/src/libmicbench-io.la

@@ -6,9 +6,9 @@ noinst_LTLIBRARIES =				\
 	libmicbench-test-utils.la		\
 	libmicbench-test-mocks.la
 
-libmicbench_test_utils_la_SOURCES = micbench-test-utils.c
+libmicbench_test_utils_la_SOURCES = micbench-test-utils.c micbench-test-utils.h
 
-libmicbench_test_mocks_la_SOURCES = micbench-test-mocks.c
+libmicbench_test_mocks_la_SOURCES = micbench-test-mocks.c micbench-test-mocks.h
 libmicbench_test_mocks_la_LIBADD = libmicbench-test-utils.la
 
 LDFLAGS += -module -rpath $(libdir) -avoid-version -no-undefined	\
