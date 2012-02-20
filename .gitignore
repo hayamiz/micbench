@@ -33,3 +33,5 @@ Makefile
 /Gemfile.lock
 /README
 /micbench-*.tar.gz
+*.gcda
+*.gcno
