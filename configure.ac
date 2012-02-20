@@ -41,6 +41,12 @@ if test "$ac_arch" = "none"; then
   AC_MSG_ERROR([Arch not supported: $ac_arch])
 fi
 
+AC_CHECK_FILE([/sys/devices/system/node], [numa_arch=yes], [numa_arch=no])
+
+if test "$numa_arch" = "yes"; then
+  AC_DEFINE([NUMA_ARCH], [1], [Define to 1 if CPUs are numa architecture.])
+fi
+
 AM_CONDITIONAL([WITH_X86_64], [test "$ac_arch" = "x86_64"])
 AM_CONDITIONAL([WITH_X86], [test "$ac_arch" = "x86"])
 
@@ -77,21 +83,33 @@ dnl ******************************
 dnl Check for libnuma
 dnl ******************************
 
-AC_CHECK_HEADERS(numa.h, [have_numa_h=yes], [have_numa_h=no])
-AC_CHECK_HEADERS(numaif.h, [have_numaif_h=yes], [have_numaif_h=no])
-AC_CHECK_LIB(numa, numa_available, [have_libnuma=yes], [have_libnuma=no])
-
-if ! test "$have_numaif_h" = "yes"; then
-  AC_MSG_ERROR([numaif.h is required.])
+if test "$numa_arch" = "yes"; then
+  AC_CHECK_HEADERS(numa.h, [have_numa_h=yes], [have_numa_h=no])
+  AC_CHECK_HEADERS(numaif.h, [have_numaif_h=yes], [have_numaif_h=no])
+  AC_CHECK_LIB(numa, numa_available, [have_libnuma=yes], [have_libnuma=no])
+  
+  if ! test "$have_numaif_h" = "yes"; then
+    AC_MSG_ERROR([numaif.h is required.])
+  fi
+  if ! test "$have_numa_h" = "yes"; then
+    AC_MSG_ERROR([numa.h is required.])
+  fi
+  
+  if test "$have_libnuma" = "yes"; then
+    LIBS="$LIBS -lnuma"
+  fi
 fi
-if ! test "$have_numa_h" = "yes"; then
-  AC_MSG_ERROR([numa.h is required.])
-fi
 
-if test "$have_libnuma" = "yes"; then
-  LIBS="$LIBS -lnuma"
-fi
+dnl ******************************
+dnl Check for numactl
+dnl ******************************
 
+if test "$numa_arch" = "yes"; then
+  AC_PATH_PROG(NUMACTL, numactl, none)
+  if test "$NUMACTL" = "none"; then
+   AC_MSG_ERROR([numactl is required.])
+  fi
+fi
 
 dnl ******************************
 dnl Check for libaio
@@ -109,15 +127,6 @@ fi
 
 if test "$have_libaio" = "yes"; then
   LIBS="$LIBS -laio"
-fi
-
-dnl ******************************
-dnl Check for numactl
-dnl ******************************
-
-AC_PATH_PROG(NUMACTL, numactl, none)
-if test "$NUMACTL" = "none"; then
- AC_MSG_ERROR([numactl is required.])
 fi
 
 dnl ******************************
@@ -195,14 +204,18 @@ echo
 echo "  CPU arch: $ac_arch"
 echo
 echo "== required headers and libraries =="
+if test "$numa_arch" = "yes"; then
 echo "  numa.h  : $have_numa_h"
 echo "  libnuma : $have_libnuma"
+fi
 echo " libaio.h : $have_libaio_h"
 echo "   libaio : $have_libaio"
 echo
 echo "== required commands =="
 echo "  Ruby    : $RUBY"
+if test "$numa_arch" = "yes"; then
 echo "  numactl : $NUMACTL"
+fi
 echo
 echo "== optional =="
 echo "   blktrace : $BLKTRACE"
