@@ -20,7 +20,7 @@
 #include <malloc.h>
 #include <pthread.h>
 
-#ifdef HAVE_NUMA_H
+#ifdef NUMA_ARCH
 #    include <numa.h>
 #    include <numaif.h>
 #endif

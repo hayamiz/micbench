@@ -406,6 +406,7 @@ main(int argc, char **argv)
             }
 
             if (args[i].affinity != NULL && args[i].affinity->nodemask != 0){
+#ifdef NUMA_ARCH
                 if (mbind(args[i].working_area,
                           mmap_size,
                           MPOL_BIND,
@@ -428,6 +429,9 @@ main(int argc, char **argv)
                     perror(": mbind(2) failed");
                     exit(EXIT_FAILURE);
                 }
+#else
+                fprintf(stderr, "NUMA specific operation specified, but not operated");
+#endif
             }
             // initialize memories and force allocation of physical memory
             struct timeval tv;
@@ -472,6 +476,7 @@ main(int argc, char **argv)
           numa_max_node()+1
         */
         if (args[0].affinity != NULL  && args[0].affinity->nodemask != 0){
+#ifdef NUMA_ARCH
             if (mbind(working_area,
                       mmap_size,
                       MPOL_BIND,
@@ -493,6 +498,9 @@ main(int argc, char **argv)
                 perror(": mbind(2) failed");
                 exit(EXIT_FAILURE);
             }
+#else
+            fprintf(stderr, "NUMA specific operation specified, but not operated");
+#endif
         }
 
         for(i = 0;i < option.multi;i++){
