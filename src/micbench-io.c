@@ -308,9 +308,9 @@ direct_io       %s\n\
 timeout         %d\n\
 bogus_comp		%ld\n\
 block_size      %d\n\
-offset_start    %ld\n\
-offset_end      %ld\n\
-misalign        %ld\n\
+offset_start    %lld\n\
+offset_end      %lld\n\
+misalign        %lld\n\
 ",
             option.multi,
             option.path,
@@ -493,12 +493,12 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
 
     int64_t path_sz = mb_getsize(option->path);
     if (option->blk_sz * option->ofst_start > path_sz){
-        fprintf(stderr, "Too big --offset-start. Maximum: %ld\n",
+        fprintf(stderr, "Too big --offset-start. Maximum: %lld\n",
                    path_sz / option->blk_sz);
         goto error;
     }
     if (option->blk_sz * option->ofst_end > path_sz) {
-        fprintf(stderr, "Too big --offset-end. Maximum: %ld\n",
+        fprintf(stderr, "Too big --offset-end. Maximum: %lld\n",
                    path_sz / option->blk_sz);
         goto error;
     }

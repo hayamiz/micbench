@@ -111,7 +111,7 @@ mb_readall(int fd, char *buf, size_t size)
 
     for(;;) {
         if ((ret = read(fd, buf, sz)) == -1){
-            printf("fd=%d, buf=%p, sz=%ld\n", fd, buf, sz);
+            printf("fd=%d, buf=%p, sz=%lu\n", fd, buf, (unsigned long) sz);
             perror("mb_readall:read");
             exit(EXIT_FAILURE);
         }
