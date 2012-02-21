@@ -19,11 +19,11 @@ dnl ******************************
 dnl Check for CPU arch.
 dnl ******************************
 
-AC_PATH_PROG(ARCH, arch, none)
-if test "$ARCH" = "none"; then
-  AC_MSG_ERROR([arch(1) is required to detect CPU arch.])
+AC_PATH_PROG(UNAME, uname, none)
+if test "$UNAME" = "none"; then
+  AC_MSG_ERROR([uname(1) is required to detect CPU arch.])
 fi
-case $(arch) in
+case $(uname -m) in
 x86_64)
     ac_arch=x86_64
     ;;
@@ -38,7 +38,7 @@ i?86)
 esac
 
 if test "$ac_arch" = "none"; then
-  AC_MSG_ERROR([Arch not supported: $ac_arch])
+  AC_MSG_ERROR([Arch. not supported: $ac_arch])
 fi
 
 AC_CHECK_FILE([/sys/devices/system/node], [numa_arch=yes], [numa_arch=no])
