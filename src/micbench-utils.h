@@ -1,10 +1,17 @@
 #ifndef MICBENCH_UTILS_H
 #define MICBENCH_UTILS_H
 
-#define _GNU_SOURCE 
+#ifndef _GNU_SOURCE
+#  define _GNU_SOURCE
+#endif
+
+#ifndef _LARGEFILE64_SOURCE
+#  define _LARGEFILE64_SOURCE
+#endif
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <errno.h>
 #include <sys/time.h>
 #include <sched.h>
 #include <sys/types.h>
@@ -121,18 +128,19 @@ mb_readall(int fd, char *buf, size_t size)
 }
 
 static inline ssize_t
-mb_preadall(int fd, char *buf, size_t size, off_t offset)
+mb_preadall(int fd, char *buf, size_t size, off64_t offset)
 {
     ssize_t ret;
 
-    ret = pread(fd, buf, size, offset);
+    ret = pread64(fd, buf, size, offset);
     if (ret == -1){
-        perror("pread(2) failed");
-        fprintf(stderr, "mb_preadall: fd=%d, buf=%p, size=%ld\n", fd, buf, size);
+        perror("pread64(2) failed");
+        fprintf(stderr, "mb_preadall(errno=%d): fd=%d, buf=%p, size=%lu, offset=%lld\n",
+                errno, fd, buf, (unsigned long) size, offset);
         exit(EXIT_FAILURE);
     } else if (ret != size) {
-        perror("pread(2) partially failed");
-        fprintf(stderr, "mb_preadall: fd=%d, buf=%p, size=%ld\n", fd, buf, size);
+        perror("pread64(2) partially failed");
+        fprintf(stderr, "mb_preadall: fd=%d, buf=%p, size=%lu, offset=%lld\n", fd, buf, (unsigned long) size, offset);
     }
 
     return size;
@@ -162,18 +170,18 @@ mb_writeall(int fd, const char *buf, size_t size)
 }
 
 static inline ssize_t
-mb_pwriteall(int fd, char *buf, size_t size, off_t offset)
+mb_pwriteall(int fd, char *buf, size_t size, off64_t offset)
 {
     ssize_t ret;
 
-    ret = pwrite(fd, buf, size, offset);
+    ret = pwrite64(fd, buf, size, offset);
     if (ret == -1){
-        perror("pwrite(2) failed");
-        fprintf(stderr, "mb_pwriteall: fd=%d, buf=%p, size=%ld\n", fd, buf, size);
+        perror("pwrite64(2) failed");
+        fprintf(stderr, "mb_pwriteall: fd=%d, buf=%p, size=%lu, offset=%lld\n", fd, buf, (unsigned long) size, offset);
         exit(EXIT_FAILURE);
     } else if (ret != size) {
-        perror("pwrite(2) partially failed");
-        fprintf(stderr, "mb_pwriteall: fd=%d, buf=%p, size=%ld\n", fd, buf, size);
+        perror("pwrite64(2) partially failed");
+        fprintf(stderr, "mb_pwriteall: fd=%d, buf=%p, size=%lu, offset=%lld\n", fd, buf, (unsigned long) size, offset);
     }
 
     return size;
