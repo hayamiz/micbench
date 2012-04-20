@@ -571,7 +571,7 @@ do_async_io(th_arg_t *arg)
     }
 
     if (option.read == false && option.write == false) {
-        fprintf(stderr, "Only read or write can be specified in seq.");
+        fprintf(stderr, "Only read or write can be specified in sync. mode\n");
         exit(EXIT_FAILURE);
     }
 
