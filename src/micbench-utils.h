@@ -11,6 +11,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <errno.h>
 #include <sys/time.h>
 #include <sched.h>
@@ -104,7 +105,7 @@ mb_read_tsc(void)
 }
 
 static inline ssize_t
-mb_readall(int fd, char *buf, size_t size)
+mb_readall(int fd, char *buf, size_t size, bool continue_on_error)
 {
     size_t sz = size;
     ssize_t ret;
@@ -113,9 +114,10 @@ mb_readall(int fd, char *buf, size_t size)
         if ((ret = read(fd, buf, sz)) == -1){
             printf("fd=%d, buf=%p, sz=%lu\n", fd, buf, (unsigned long) sz);
             perror("mb_readall:read");
-            exit(EXIT_FAILURE);
+            if (! continue_on_error)
+                exit(EXIT_FAILURE);
         }
-    
+
         if (ret < sz) {
             sz -= ret;
             buf += ret;
@@ -128,7 +130,7 @@ mb_readall(int fd, char *buf, size_t size)
 }
 
 static inline ssize_t
-mb_preadall(int fd, char *buf, size_t size, off64_t offset)
+mb_preadall(int fd, char *buf, size_t size, off64_t offset, bool continue_on_error)
 {
     ssize_t ret;
 
@@ -137,7 +139,8 @@ mb_preadall(int fd, char *buf, size_t size, off64_t offset)
         perror("pread64(2) failed");
         fprintf(stderr, "mb_preadall(errno=%d): fd=%d, buf=%p, size=%lu, offset=%lld\n",
                 errno, fd, buf, (unsigned long) size, offset);
-        exit(EXIT_FAILURE);
+        if (! continue_on_error)
+            exit(EXIT_FAILURE);
     } else if (ret != size) {
         perror("pread64(2) partially failed");
         fprintf(stderr, "mb_preadall: fd=%d, buf=%p, size=%lu, offset=%lld\n", fd, buf, (unsigned long) size, offset);
@@ -147,7 +150,7 @@ mb_preadall(int fd, char *buf, size_t size, off64_t offset)
 }
 
 static inline ssize_t
-mb_writeall(int fd, const char *buf, size_t size)
+mb_writeall(int fd, const char *buf, size_t size, bool continue_on_error)
 {
     size_t sz = size;
     ssize_t ret;
@@ -155,9 +158,10 @@ mb_writeall(int fd, const char *buf, size_t size)
     for(;;) {
         if ((ret = write(fd, buf, sz)) == -1){
             perror("mb_writeall:write");
-            exit(EXIT_FAILURE);
+            if (! continue_on_error)
+                exit(EXIT_FAILURE);
         }
-    
+
         if (ret < sz) {
             sz -= ret;
             buf += ret;
@@ -170,7 +174,7 @@ mb_writeall(int fd, const char *buf, size_t size)
 }
 
 static inline ssize_t
-mb_pwriteall(int fd, char *buf, size_t size, off64_t offset)
+mb_pwriteall(int fd, char *buf, size_t size, off64_t offset, bool continue_on_error)
 {
     ssize_t ret;
 
@@ -178,7 +182,8 @@ mb_pwriteall(int fd, char *buf, size_t size, off64_t offset)
     if (ret == -1){
         perror("pwrite64(2) failed");
         fprintf(stderr, "mb_pwriteall: fd=%d, buf=%p, size=%lu, offset=%lld\n", fd, buf, (unsigned long) size, offset);
-        exit(EXIT_FAILURE);
+        if (! continue_on_error)
+            exit(EXIT_FAILURE);
     } else if (ret != size) {
         perror("pwrite64(2) partially failed");
         fprintf(stderr, "mb_pwriteall: fd=%d, buf=%p, size=%lu, offset=%lld\n", fd, buf, (unsigned long) size, offset);

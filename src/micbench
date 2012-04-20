@@ -466,6 +466,10 @@ class IoCommand < BaseCommand
         parse_error.call("--offset-end requires 0 or positive integer.")
       end
     end
+    @parser.on('-C', '--continue-on-error',
+               "Do not exit on IO error") do
+      @options[:continue_on_error] = true
+    end
     @parser.on('-z', '--misalign OFFSET',
               "Misalignment from current position (in byte) (default: 0)") do |offset|
       if offset =~ /\A\d+\Z/
@@ -498,6 +502,7 @@ class IoCommand < BaseCommand
     @options[:offset_start] = 0
     @options[:offset_end] = 0
     @options[:misalign] = 0
+    @options[:continue_on_error] = false
     @options[:verbose] = false
     @options[:debug] = false
     @options[:rwmix] = 0.0
@@ -550,6 +555,7 @@ class IoCommand < BaseCommand
                         "-s", @options[:offset_start],
                         "-e", @options[:offset_end],
                         "-z", @options[:misalign],
+                        (@options[:continue_on_error] ? "-C" : []),
                         (@options[:verbose] ? "-v" : []),
                         device_or_file].flatten.join(" ")
 

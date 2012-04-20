@@ -46,6 +46,8 @@ typedef struct {
     // bogus computation
     long bogus_comp; // # of computation to be operated
 
+    bool continue_on_error;
+
     bool verbose;
 
     bool noop;

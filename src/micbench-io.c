@@ -368,10 +368,11 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->ofst_start = 0;
     option->ofst_end = 0;
     option->misalign = 0;
+    option->continue_on_error = false;
     option->verbose = false;
 
     optind = 1;
-    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdAE:T:WM:b:s:e:z:c:v")) != -1){
+    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdAE:T:WM:b:s:e:z:c:Cv")) != -1){
         switch(optchar){
         case 'N': // noop
             option->noop = true;
@@ -450,6 +451,9 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
             break;
         case 'c': // # of computation operated between each IO
             option->bogus_comp = strtol(optarg, NULL, 10);
+            break;
+        case 'C': // ontinue on error
+            option->continue_on_error = true;
             break;
         case 'v': // verbose
             option->verbose = true;
@@ -653,9 +657,9 @@ do_sync_io(th_arg_t *th_arg)
 
                 GETTIMEOFDAY(&timer);
                 if (mb_read_or_write() == MB_DO_READ) {
-                    mb_preadall(fd, buf, option.blk_sz, addr);
+                    mb_preadall(fd, buf, option.blk_sz, addr, option.continue_on_error);
                 } else {
-                    mb_pwriteall(fd, buf, option.blk_sz, addr);
+                    mb_pwriteall(fd, buf, option.blk_sz, addr, option.continue_on_error);
                 }
                 iowait_time += mb_elapsed_time_from(&timer);
                 io_count ++;
@@ -679,9 +683,9 @@ do_sync_io(th_arg_t *th_arg)
             for(i = 0;i < 100; i++){
                 GETTIMEOFDAY(&timer);
                 if (option.read) {
-                    mb_readall(fd, buf, option.blk_sz);
+                    mb_readall(fd, buf, option.blk_sz, option.continue_on_error);
                 } else if (option.write) {
-                    mb_writeall(fd, buf, option.blk_sz);
+                    mb_writeall(fd, buf, option.blk_sz, option.continue_on_error);
                 } else {
                     fprintf(stderr, "Only read or write can be specified in seq.");
                     exit(EXIT_FAILURE);
