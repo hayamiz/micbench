@@ -137,13 +137,13 @@ mb_preadall(int fd, char *buf, size_t size, off64_t offset, bool continue_on_err
     ret = pread64(fd, buf, size, offset);
     if (ret == -1){
         perror("pread64(2) failed");
-        fprintf(stderr, "mb_preadall(errno=%d): fd=%d, buf=%p, size=%lu, offset=%lld\n",
+        fprintf(stderr, "mb_preadall(errno=%d): fd=%d, buf=%p, size=%lu, offset=%ld\n",
                 errno, fd, buf, (unsigned long) size, offset);
         if (! continue_on_error)
             exit(EXIT_FAILURE);
     } else if (ret != size) {
         perror("pread64(2) partially failed");
-        fprintf(stderr, "mb_preadall: fd=%d, buf=%p, size=%lu, offset=%lld\n", fd, buf, (unsigned long) size, offset);
+        fprintf(stderr, "mb_preadall: fd=%d, buf=%p, size=%lu, offset=%ld\n", fd, buf, (unsigned long) size, offset);
     }
 
     return size;
@@ -181,12 +181,12 @@ mb_pwriteall(int fd, char *buf, size_t size, off64_t offset, bool continue_on_er
     ret = pwrite64(fd, buf, size, offset);
     if (ret == -1){
         perror("pwrite64(2) failed");
-        fprintf(stderr, "mb_pwriteall: fd=%d, buf=%p, size=%lu, offset=%lld\n", fd, buf, (unsigned long) size, offset);
+        fprintf(stderr, "mb_pwriteall: fd=%d, buf=%p, size=%lu, offset=%ld\n", fd, buf, (unsigned long) size, offset);
         if (! continue_on_error)
             exit(EXIT_FAILURE);
     } else if (ret != size) {
         perror("pwrite64(2) partially failed");
-        fprintf(stderr, "mb_pwriteall: fd=%d, buf=%p, size=%lu, offset=%lld\n", fd, buf, (unsigned long) size, offset);
+        fprintf(stderr, "mb_pwriteall: fd=%d, buf=%p, size=%lu, offset=%ld\n", fd, buf, (unsigned long) size, offset);
     }
 
     return size;
