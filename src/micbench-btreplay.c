@@ -100,9 +100,9 @@ do_thread_job(mb_btreplay_thread_arg_t *arg)
                        ofst,
                        sz);
             if (w == false) { // do read
-                mb_readall(fd, buf, sz);
+                mb_readall(fd, buf, sz, true);
             } else { // do write
-                mb_writeall(fd, buf, sz);
+                mb_writeall(fd, buf, sz, true);
             }
             endpos = ofst + sz;
         }
