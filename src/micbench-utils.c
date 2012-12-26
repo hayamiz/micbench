@@ -184,14 +184,14 @@ unsigned long
 mb_rand_range_ulong(unsigned long from, unsigned long to)
 {
     unsigned long width = to - from;
-    return lrand48() % width + from;
+    return drand48() * width + from;
 }
 
 long
 mb_rand_range_long(long from, long to)
 {
     long width = to - from;
-    return lrand48() % width + from;
+    return drand48() * width + from;
 }
 
 int64_t
