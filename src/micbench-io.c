@@ -548,6 +548,9 @@ do_async_io(th_arg_t *arg)
     void *buf;
     mb_aiom_t *aiom;
     mb_res_pool_t *buffer_pool;
+    struct drand48_data  rand;
+
+    srand48_r(arg->common_seed + arg->id, &rand);
 
     fd = arg->fd;
     meter = arg->meter;
@@ -579,16 +582,17 @@ do_async_io(th_arg_t *arg)
     while(mb_elapsed_time_from(&start_tv) < option.timeout) {
         while(mb_aiom_nr_submittable(aiom) > 0) {
             if (option.rand) {
-                ofst = (int64_t) mb_rand_range_long(option.ofst_start,
+                ofst = (int64_t) mb_rand_range_long(&rand,
+                                                    option.ofst_start,
                                                     option.ofst_end);
             }
             addr = ofst * option.blk_sz + option.misalign;
 
             buf = mb_res_pool_pop(buffer_pool);
             if (mb_read_or_write() == MB_DO_READ) {
-                mb_aiom_prep_pread(aiom, fd, buf, option.blk_sz, ofst * option.blk_sz);
+                mb_aiom_prep_pread(aiom, fd, buf, option.blk_sz, addr);
             } else {
-                mb_aiom_prep_pwrite(aiom, fd, buf, option.blk_sz, ofst * option.blk_sz);
+                mb_aiom_prep_pwrite(aiom, fd, buf, option.blk_sz, addr);
             }
             ofst++;
         }
@@ -651,7 +655,8 @@ do_sync_io(th_arg_t *th_arg)
     if (option.rand){
         while (mb_elapsed_time_from(&start_tv) < option.timeout) {
             for(i = 0;i < 100; i++){
-                ofst = (int64_t) mb_rand_range_long(option.ofst_start,
+                ofst = (int64_t) mb_rand_range_long(&rand,
+                                                    option.ofst_start,
                                                     option.ofst_end);
                 addr = ofst * option.blk_sz + option.misalign;
 

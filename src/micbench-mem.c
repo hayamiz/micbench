@@ -238,13 +238,14 @@ do_memory_stress_rand(perf_counter_t* pc,
     register long *ptr;
     long *ptr_start;
     long *ptr_end;
+    struct drand48_data rand;
 
     register uintptr_t t0, t1;
 
     iter_count = KIBI;
 
     // initialize pointer loop
-    srand48(syscall(SYS_gettid) + time(NULL));
+    srand48_r(syscall(SYS_gettid) + time(NULL), &rand);
     ptr_start = working_area;
     ptr_end = working_area + (working_size / sizeof(long));
 
@@ -262,7 +263,7 @@ do_memory_stress_rand(perf_counter_t* pc,
     for(i = 0; i < num_cacheline; i++){
         long *ptr1, *ptr1_succ, *ptr2, *ptr2_succ;
     retry:
-        ofst = mb_rand_range_ulong(0, num_cacheline - i);
+        ofst = mb_rand_range_ulong(&rand, 0, num_cacheline - i);
         ptr1 = ptr_start + (i * 64 / sizeof(long));
         ptr1_succ = (long *) *ptr1;
         ptr2 = ptr_start + ((i + ofst) * 64 / sizeof(long));

@@ -74,8 +74,8 @@ char *mb_affinity_to_string(mb_affinity_t *affinity);
 double mb_elapsed_time_from(struct timeval *tv);
 long   mb_elapsed_usec_from(struct timeval *tv);
 
-unsigned long mb_rand_range_ulong (unsigned long from, unsigned long to);
-long          mb_rand_range_long  (long from, long to);
+unsigned long mb_rand_range_ulong (struct drand48_data* rand, unsigned long from, unsigned long to);
+long          mb_rand_range_long  (struct drand48_data* rand, long from, long to);
 
 int64_t mb_getsize(const char *path);
 
