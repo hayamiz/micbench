@@ -73,6 +73,12 @@ typedef struct {
 } mb_res_pool_t;
 
 
+/* wrapper of struct iocb */
+typedef struct aiom_cb {
+    struct iocb iocb;
+    struct timeval submit_time;
+} aiom_cb_t;
+
 // AIO manager
 typedef struct {
     io_context_t context;
@@ -84,8 +90,9 @@ typedef struct {
 
     // # of IO completed by this AIO manager
     int64_t iocount;
+    double iowait;
 
-    struct iocb **pending;
+    aiom_cb_t **pending;
     struct io_event *events;
 } mb_aiom_t;
 
@@ -96,9 +103,9 @@ int parse_args(int argc, char **argv, micbench_io_option_t *option);
 mb_aiom_t   *mb_aiom_make           (int nr_events);
 void         mb_aiom_destroy        (mb_aiom_t *aiom);
 int          mb_aiom_submit         (mb_aiom_t *aiom);
-struct iocb *mb_aiom_prep_pread     (mb_aiom_t *aiom, int fd,
+aiom_cb_t   *mb_aiom_prep_pread     (mb_aiom_t *aiom, int fd,
                                      void *buf, size_t count, long long offset);
-struct iocb *mb_aiom_prep_pwrite    (mb_aiom_t *aiom, int fd,
+aiom_cb_t   *mb_aiom_prep_pwrite    (mb_aiom_t *aiom, int fd,
                                      void *buf, size_t count, long long offset);
 int          mb_aiom_submit_pread   (mb_aiom_t *aiom, int fd,
                                      void *buf, size_t count, long long offset);
@@ -110,8 +117,8 @@ int          mb_aiom_nr_submittable (mb_aiom_t *aiom);
 
 mb_res_pool_t *mb_res_pool_make    (int nr_events);
 void           mb_res_pool_destroy (mb_res_pool_t *pool);
-struct iocb *  mb_res_pool_pop     (mb_res_pool_t *pool);
-int            mb_res_pool_push    (mb_res_pool_t *pool, struct iocb *iocb);
+aiom_cb_t     *mb_res_pool_pop     (mb_res_pool_t *pool);
+int            mb_res_pool_push    (mb_res_pool_t *pool, aiom_cb_t *aiom_cb);
 
 #define mb_read_or_write() \
     (option.read == true ? MB_DO_READ : \
