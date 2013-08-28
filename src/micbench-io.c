@@ -35,6 +35,7 @@ typedef struct {
     pthread_t *self;
     meter_t *meter;
     long common_seed;
+    int tid;
 
     int fd;
 } th_arg_t;
@@ -558,7 +559,7 @@ do_async_io(th_arg_t *arg)
     mb_res_pool_t *buffer_pool;
     struct drand48_data  rand;
 
-    srand48_r(arg->common_seed + arg->id, &rand);
+    srand48_r(arg->common_seed ^ arg->tid, &rand);
 
     fd = arg->fd;
     meter = arg->meter;
@@ -653,7 +654,7 @@ do_sync_io(th_arg_t *th_arg)
     fd = th_arg->fd;
     meter = th_arg->meter;
     ofst = 0;
-    srand48_r(th_arg->common_seed + th_arg->id, &rand);
+    srand48_r(th_arg->common_seed ^ th_arg->tid, &rand);
 
     register double iowait_time = 0;
     register int64_t io_count = 0;
@@ -739,6 +740,7 @@ thread_handler(void *arg)
     mb_affinity_t *aff;
 
     tid = syscall(SYS_gettid);
+    th_arg->tid = tid;
 
     if (option.affinities != NULL){
         aff = option.affinities[th_arg->id];
