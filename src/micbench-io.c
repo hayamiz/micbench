@@ -807,7 +807,7 @@ micbench_io_main(int argc, char **argv)
         flags |= O_DIRECT;
     }
 
-    common_seed = time(NULL);
+    common_seed = time(NULL) * getpid();
 
     if ((fd = open(option.path, flags)) == -1){
         perror("main:open(2)");
