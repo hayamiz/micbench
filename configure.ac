@@ -64,7 +64,7 @@ dnl ******************************
 dnl Check for standard programs
 dnl ******************************
 
-AC_PROG_GREP
+dnl AC_PROG_GREP
 
 dnl ******************************
 dnl Check for ruby
