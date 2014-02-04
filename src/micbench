@@ -523,16 +523,21 @@ class IoCommand < BaseCommand
   end
 
   def do_cmd(argv)
+    device_or_files = []
+
     if argv.empty?
       $stderr.puts("device or file must be specified.")
       puts @parser.help
       exit(false)
-    else
-      device_or_file = argv.shift
     end
 
-    if ! argv.empty?
-      $stderr.puts("Following arguments are ignored: #{argv.join(' ')}")
+    argv.each do |dof|
+      unless File.exists?(dof)
+        $stderr.puts("No such file or device: #{dof}")
+        puts @parser.help
+        exit(false)
+      end
+      device_or_files.push(dof)
     end
 
     real_command = File.join(File.dirname(__FILE__), "micbench-io")
@@ -557,10 +562,11 @@ class IoCommand < BaseCommand
                         "-z", @options[:misalign],
                         (@options[:continue_on_error] ? "-C" : []),
                         (@options[:verbose] ? "-v" : []),
-                        device_or_file].flatten.join(" ")
+                        device_or_files].flatten.join(" ")
 
     if ENV['MB_DEBUG'] || @options[:debug]
       puts real_command_str
+      exit(true)
     end
     if ENV['MB_LEAKCHECK']
       real_command_str = "valgrind --leak-check=full " + real_command_str

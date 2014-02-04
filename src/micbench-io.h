@@ -1,3 +1,5 @@
+/* -*- indent-tabs-mode: nil -*- */
+
 #ifndef MICBENCH_IO_H
 #define MICBENCH_IO_H
 
@@ -41,7 +43,10 @@ typedef struct {
     int64_t misalign;
 
     // device or file
-    const char *path;
+    int nr_files;
+    char **file_path_list;
+    int *file_fd_list;
+    int64_t *file_size_list;
 
     // bogus computation
     long bogus_comp; // # of computation to be operated

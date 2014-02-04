@@ -1,3 +1,5 @@
+/* -*- indent-tabs-mode: nil -*- */
+
 #define _GNU_SOURCE
 #define _LARGEFILE64_SOURCE
 
@@ -37,7 +39,7 @@ typedef struct {
     long common_seed;
     int tid;
 
-    int fd;
+    int *fd_list;
 } th_arg_t;
 
 
@@ -310,7 +312,6 @@ print_option()
 {
     fprintf(stderr, "== configuration summary ==\n\
 multiplicity    %d\n\
-device_or_file  %s\n\
 access_pattern  %s\n\
 access_mode     %s\n\
 direct_io       %s\n\
@@ -322,7 +323,6 @@ offset_end      %ld\n\
 misalign        %ld\n\
 ",
             option.multi,
-            option.path,
             (option.seq ? "sequential" : "random"),
             (option.read ? "read" :
              option.write ? "write" : "mix"),
@@ -374,11 +374,15 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->aio_nr_events = 64;
     option->aio_tracefile = NULL;
     option->blk_sz = 64 * KIBI;
-    option->ofst_start = 0;
-    option->ofst_end = 0;
+    option->ofst_start = -1;
+    option->ofst_end = -1;
     option->misalign = 0;
     option->continue_on_error = false;
     option->verbose = false;
+
+    option->file_path_list = NULL;
+    option->file_size_list = NULL;
+    option->file_fd_list = NULL;
 
     optind = 1;
     while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdAE:T:WM:b:s:e:z:c:Cv")) != -1){
@@ -477,44 +481,56 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
         fprintf(stderr, "Device or file is not specified.\n");
         goto error;
     }
-    option->path = argv[optind];
 
-    // check device
+    option->nr_files = argc - optind;
+    option->file_path_list = malloc(sizeof(char *) * option->nr_files);
+    option->file_size_list = malloc(sizeof(int64_t) * option->nr_files);
+    option->file_fd_list = malloc(sizeof(int) * option->nr_files);
 
-    int fd;
-    if (option->noop == false) {
-        if (option->read) {
-            if ((fd = open(option->path, O_RDONLY)) == -1) {
-                fprintf(stderr, "Cannot open %s with O_RDONLY\n", option->path);
-                goto error;
+    for (idx = 0; idx + optind < argc; idx++) {
+        int fd;
+        char *path;
+
+        path = strdup(argv[optind + idx]);
+        option->file_path_list[idx] = path;
+
+        if (option->noop == false) {
+            if (option->read) {
+                if ((fd = open(path, O_RDONLY)) == -1) {
+                    fprintf(stderr, "Cannot open %s with O_RDONLY\n", path);
+                    goto error;
+                }
+                close(fd);
+            } else if (option->write) {
+                if ((fd = open(path, O_WRONLY)) == -1) {
+                    fprintf(stderr, "Cannot open %s with O_WRONLY\n", path);
+                    goto error;
+                }
+                close(fd);
+            } else {
+                if ((fd = open(path, O_RDWR)) == -1) {
+                    fprintf(stderr, "Cannot open %s with O_RDWR\n", path);
+                    goto error;
+                }
+                close(fd);
             }
-            close(fd);
-        } else if (option->write) {
-            if ((fd = open(option->path, O_WRONLY)) == -1) {
-                fprintf(stderr, "Cannot open %s with O_WRONLY\n", option->path);
-                goto error;
-            }
-            close(fd);
-        } else {
-            if ((fd = open(option->path, O_RDWR)) == -1) {
-                fprintf(stderr, "Cannot open %s with O_RDWR\n", option->path);
-                goto error;
-            }
-            close(fd);
         }
+
+        int64_t path_sz = mb_getsize(path);
+        if (option->blk_sz * option->ofst_start > path_sz){
+            fprintf(stderr, "Too big --offset-start. Maximum: %ld\n",
+                    path_sz / option->blk_sz);
+            goto error;
+        }
+        if (option->blk_sz * option->ofst_end > path_sz) {
+            fprintf(stderr, "Too big --offset-end. Maximum: %ld\n",
+                    path_sz / option->blk_sz);
+            goto error;
+        }
+
+        option->file_size_list[idx] = path_sz;
     }
 
-    int64_t path_sz = mb_getsize(option->path);
-    if (option->blk_sz * option->ofst_start > path_sz){
-        fprintf(stderr, "Too big --offset-start. Maximum: %ld\n",
-                   path_sz / option->blk_sz);
-        goto error;
-    }
-    if (option->blk_sz * option->ofst_end > path_sz) {
-        fprintf(stderr, "Too big --offset-end. Maximum: %ld\n",
-                   path_sz / option->blk_sz);
-        goto error;
-    }
     if (option->direct && option->blk_sz % 512) {
         fprintf(stderr, "--direct specified. Block size must be multiples of block size of devices.\n");
         goto error;
@@ -523,9 +539,8 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
         fprintf(stderr, "You must be root to use --direct\n");
         goto error;
     }
-    if (option->ofst_end == 0) {
-        option->ofst_end = path_sz / option->blk_sz;
-    }
+
+    // check device
 
     // aio trace log
     if (option->aio_tracefile != NULL && option->aio == false) {
@@ -534,7 +549,21 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     }
 
     return 0;
+
 error:
+    if (option->file_path_list != NULL) {
+        free(option->file_path_list);
+        option->file_path_list = NULL;
+    }
+    if (option->file_size_list != NULL) {
+        free(option->file_size_list);
+        option->file_size_list = NULL;
+    }
+    if (option->file_fd_list != NULL) {
+        free(option->file_fd_list);
+        option->file_fd_list = NULL;
+    }
+
     return 1;
 }
 
@@ -547,10 +576,9 @@ mb_set_option(micbench_io_option_t *option_)
 void
 do_async_io(th_arg_t *arg)
 {
-    int fd;
+    int *fd_list;
     meter_t *meter;
     struct timeval start_tv;
-    int64_t ofst;
     int64_t addr;
     int n;
     int i;
@@ -559,9 +587,14 @@ do_async_io(th_arg_t *arg)
     mb_res_pool_t *buffer_pool;
     struct drand48_data  rand;
 
+    int file_idx;
+    int64_t *ofst_list;
+    int64_t *ofst_min_list;
+    int64_t *ofst_max_list;
+
     srand48_r(arg->common_seed ^ arg->tid, &rand);
 
-    fd = arg->fd;
+    fd_list = arg->fd_list;
     meter = arg->meter;
     aiom = mb_aiom_make(option.aio_nr_events);
     if (aiom == NULL) {
@@ -576,10 +609,29 @@ do_async_io(th_arg_t *arg)
         mb_res_pool_push(buffer_pool, buf);
     }
 
-    if (option.seq) {
-        ofst = option.ofst_start + (option.ofst_end - option.ofst_start) * arg->id / option.multi;
-    } else {
-        ofst = 0;
+    // offset handling
+    ofst_list = malloc(sizeof(int64_t) * option.nr_files);
+    ofst_min_list = malloc(sizeof(int64_t) * option.nr_files);
+    ofst_max_list = malloc(sizeof(int64_t) * option.nr_files);
+
+    for (i = 0; i < option.nr_files; i++) {
+        if (option.ofst_start >= 0) {
+            ofst_min_list[i] = option.ofst_start;
+        } else {
+            ofst_min_list[i] = 0;
+        }
+
+        if (option.ofst_end >= 0) {
+            ofst_max_list[i] = option.ofst_end;
+        } else {
+            ofst_max_list[i] = option.file_size_list[i] / option.blk_sz;
+        }
+
+        if (option.seq) {
+            ofst_list[i] = ofst_min_list[i] + (ofst_max_list[i] - ofst_min_list[i]) * arg->id / option.multi;
+        } else {
+            ofst_list[i] = ofst_min_list[i];
+        }
     }
 
     if (option.read == false && option.write == false) {
@@ -587,23 +639,39 @@ do_async_io(th_arg_t *arg)
         exit(EXIT_FAILURE);
     }
 
+    file_idx = 0;
+
     GETTIMEOFDAY(&start_tv);
     while(mb_elapsed_time_from(&start_tv) < option.timeout) {
         while(mb_aiom_nr_submittable(aiom) > 0) {
+            // select file
             if (option.rand) {
-                ofst = (int64_t) mb_rand_range_long(&rand,
-                                                    option.ofst_start,
-                                                    option.ofst_end);
+                long ret;
+                lrand48_r(&rand, &ret);
+                file_idx = ret % option.nr_files;
+            } else {
+                file_idx++;
+                file_idx %= option.nr_files;
             }
-            addr = ofst * option.blk_sz + option.misalign;
+
+            if (option.rand) {
+                ofst_list[file_idx] = (int64_t) mb_rand_range_long(&rand,
+                                                                   ofst_min_list[file_idx],
+                                                                   ofst_max_list[file_idx]);
+            } else {
+                ofst_list[file_idx]++;
+                if (ofst_list[file_idx] >= ofst_max_list[file_idx]) {
+                    ofst_list[file_idx] = ofst_min_list[file_idx];
+                }
+            }
+            addr = ofst_list[file_idx] * option.blk_sz + option.misalign;
 
             buf = mb_res_pool_pop(buffer_pool);
             if (mb_read_or_write() == MB_DO_READ) {
-                mb_aiom_prep_pread(aiom, fd, buf, option.blk_sz, addr);
+                mb_aiom_prep_pread(aiom, fd_list[file_idx], buf, option.blk_sz, addr);
             } else {
-                mb_aiom_prep_pwrite(aiom, fd, buf, option.blk_sz, addr);
+                mb_aiom_prep_pwrite(aiom, fd_list[file_idx], buf, option.blk_sz, addr);
             }
-            ofst++;
         }
         if (0 >= (n = mb_aiom_submit(aiom))) {
             perror("do_async_io:mb_aiom_submit failed");
@@ -636,6 +704,10 @@ do_async_io(th_arg_t *arg)
     meter->iowait_time = aiom->iowait;
 
     mb_aiom_destroy(aiom);
+
+    free(ofst_list);
+    free(ofst_min_list);
+    free(ofst_max_list);
 }
 
 void
@@ -645,15 +717,19 @@ do_sync_io(th_arg_t *th_arg)
     struct timeval       timer;
     meter_t             *meter;
     struct drand48_data  rand;
-    int                  fd;
-    int64_t              ofst;
     int64_t              addr;
     void                *buf;
     int                  i;
 
-    fd = th_arg->fd;
+    int file_idx;
+    int *fd_list;
+    int64_t *ofst_list;
+    int64_t *ofst_min_list;
+    int64_t *ofst_max_list;
+
+
+    fd_list = th_arg->fd_list;
     meter = th_arg->meter;
-    ofst = 0;
     srand48_r(th_arg->common_seed ^ th_arg->tid, &rand);
 
     register double iowait_time = 0;
@@ -661,20 +737,54 @@ do_sync_io(th_arg_t *th_arg)
 
     buf = memalign(option.blk_sz, option.blk_sz);
 
+    // offset handling
+    ofst_list = malloc(sizeof(int64_t) * option.nr_files);
+    ofst_min_list = malloc(sizeof(int64_t) * option.nr_files);
+    ofst_max_list = malloc(sizeof(int64_t) * option.nr_files);
+
+    for (i = 0; i < option.nr_files; i++) {
+        if (option.ofst_start >= 0) {
+            ofst_min_list[i] = option.ofst_start;
+        } else {
+            ofst_min_list[i] = 0;
+        }
+
+        if (option.ofst_end >= 0) {
+            ofst_max_list[i] = option.ofst_end;
+        } else {
+            ofst_max_list[i] = option.file_size_list[i] / option.blk_sz;
+        }
+
+        if (option.seq) {
+            ofst_list[i] = ofst_min_list[i]
+                + (ofst_max_list[i] - ofst_min_list[i]) * th_arg->id / option.multi;
+        } else {
+            ofst_list[i] = ofst_min_list[i];
+        }
+    }
+
+    file_idx = 0;
+
     GETTIMEOFDAY(&start_tv);
     if (option.rand){
         while (mb_elapsed_time_from(&start_tv) < option.timeout) {
             for(i = 0;i < 100; i++){
-                ofst = (int64_t) mb_rand_range_long(&rand,
-                                                    option.ofst_start,
-                                                    option.ofst_end);
-                addr = ofst * option.blk_sz + option.misalign;
+                // select file
+                long ret;
+                lrand48_r(&rand, &ret);
+                file_idx = ret % option.nr_files;
+
+                ofst_list[file_idx] = (int64_t) mb_rand_range_long(&rand,
+                                                                   ofst_min_list[file_idx],
+                                                                   ofst_max_list[file_idx]);
+
+                addr = ofst_list[file_idx] * option.blk_sz + option.misalign;
 
                 GETTIMEOFDAY(&timer);
                 if (mb_read_or_write() == MB_DO_READ) {
-                    mb_preadall(fd, buf, option.blk_sz, addr, option.continue_on_error);
+                    mb_preadall(fd_list[file_idx], buf, option.blk_sz, addr, option.continue_on_error);
                 } else {
-                    mb_pwriteall(fd, buf, option.blk_sz, addr, option.continue_on_error);
+                    mb_pwriteall(fd_list[file_idx], buf, option.blk_sz, addr, option.continue_on_error);
                 }
                 iowait_time += mb_elapsed_time_from(&timer);
                 io_count ++;
@@ -687,20 +797,28 @@ do_sync_io(th_arg_t *th_arg)
             }
         }
     } else if (option.seq) {
-        ofst = option.ofst_start + ((option.ofst_end - option.ofst_start) * th_arg->id) / option.multi;
-        addr = ofst * option.blk_sz + option.misalign;
-        if (lseek64(fd, addr, SEEK_SET) == -1){
-            perror("do_sync_io:lseek64");
-            exit(EXIT_FAILURE);
-        }
-
         while (mb_elapsed_time_from(&start_tv) < option.timeout) {
             for(i = 0;i < 100; i++){
+                // select file
+                file_idx++;
+                file_idx %= option.nr_files;
+
+                // incr offset
+                ofst_list[file_idx]++;
+                if (ofst_list[file_idx] >= ofst_max_list[file_idx]) {
+                    ofst_list[file_idx] = ofst_min_list[file_idx];
+                }
+                addr = ofst_list[file_idx] * option.blk_sz + option.misalign;
+                if (lseek64(fd_list[file_idx], addr, SEEK_SET) == -1){
+                    perror("do_sync_io:lseek64");
+                    exit(EXIT_FAILURE);
+                }
+
                 GETTIMEOFDAY(&timer);
                 if (option.read) {
-                    mb_readall(fd, buf, option.blk_sz, option.continue_on_error);
+                    mb_readall(fd_list[file_idx], buf, option.blk_sz, option.continue_on_error);
                 } else if (option.write) {
-                    mb_writeall(fd, buf, option.blk_sz, option.continue_on_error);
+                    mb_writeall(fd_list[file_idx], buf, option.blk_sz, option.continue_on_error);
                 } else {
                     fprintf(stderr, "Only read or write can be specified in seq.");
                     exit(EXIT_FAILURE);
@@ -712,16 +830,6 @@ do_sync_io(th_arg_t *th_arg)
                 volatile double dummy = 0.0;
                 for(idx = 0; idx < option.bogus_comp; idx++){
                     dummy += idx;
-                }
-
-                ofst ++;
-                if (ofst >= option.ofst_end) {
-                    ofst = option.ofst_start;
-                    addr = ofst * option.blk_sz + option.misalign;
-                    if (lseek64(fd, addr, SEEK_SET) == -1){
-                        perror("do_sync_io:lseek64");
-                        exit(EXIT_FAILURE);
-                    }
                 }
             }
         }
@@ -767,13 +875,14 @@ micbench_io_main(int argc, char **argv)
 {
     th_arg_t *th_args;
     int i;
-    int fd = 0;
     int flags;
     struct timeval start_tv;
     result_t result;
     meter_t *meter;
     long common_seed;
     double exec_time;
+    int fd;
+    int *fd_list;
 
     if (getenv("MICBENCH") == NULL) {
         fprintf(stderr, "Variable MICBENCH is not set.\n"
@@ -809,9 +918,13 @@ micbench_io_main(int argc, char **argv)
 
     common_seed = time(NULL) * getpid();
 
-    if ((fd = open(option.path, flags)) == -1){
-        perror("main:open(2)");
-        exit(EXIT_FAILURE);
+    fd_list = malloc(sizeof(int) * option.nr_files);
+    for (i = 0; i < option.nr_files; i++) {
+        if ((fd = open(option.file_path_list[i], flags)) == -1){
+            perror("main:open(2)");
+            exit(EXIT_FAILURE);
+        }
+        fd_list[i] = fd;
     }
 
     if (option.aio_tracefile != NULL) {
@@ -823,7 +936,7 @@ micbench_io_main(int argc, char **argv)
     for(i = 0;i < option.multi;i++){
         th_args[i].id          = i;
         th_args[i].self        = malloc(sizeof(pthread_t));
-        th_args[i].fd          = fd;
+        th_args[i].fd_list     = fd_list;
         th_args[i].common_seed = common_seed;
         meter              = th_args[i].meter = malloc(sizeof(meter_t));
         meter->iowait_time = 0;
@@ -839,7 +952,11 @@ micbench_io_main(int argc, char **argv)
         pthread_join(*th_args[i].self, NULL);
     }
     exec_time = mb_elapsed_time_from(&start_tv);
-    close(fd);
+
+    for (i = 0; i < option.nr_files; i++) {
+        close(fd_list[i]);
+    }
+    free(fd_list);
 
     int64_t count_sum = 0;
     double iowait_time_sum = 0;
