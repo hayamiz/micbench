@@ -43,9 +43,9 @@ typedef struct {
     int64_t misalign;
 
     // device or file
+    int open_flags;
     int nr_files;
     char **file_path_list;
-    int *file_fd_list;
     int64_t *file_size_list;
 
     // bogus computation

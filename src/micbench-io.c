@@ -111,7 +111,7 @@ mb_aiom_submit(mb_aiom_t *aiom)
         return 0;
     }
 
-    ret = io_submit(aiom->context, aiom->nr_pending, aiom->pending);
+    ret = io_submit(aiom->context, aiom->nr_pending, (struct iocb **) aiom->pending);
 
     if (aio_tracefile != NULL) {
         fprintf(aio_tracefile,
@@ -379,10 +379,10 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->misalign = 0;
     option->continue_on_error = false;
     option->verbose = false;
+    option->open_flags = O_RDONLY;
 
     option->file_path_list = NULL;
     option->file_size_list = NULL;
-    option->file_fd_list = NULL;
 
     optind = 1;
     while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdAE:T:WM:b:s:e:z:c:Cv")) != -1){
@@ -485,7 +485,6 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->nr_files = argc - optind;
     option->file_path_list = malloc(sizeof(char *) * option->nr_files);
     option->file_size_list = malloc(sizeof(int64_t) * option->nr_files);
-    option->file_fd_list = malloc(sizeof(int) * option->nr_files);
 
     for (idx = 0; idx + optind < argc; idx++) {
         int fd;
@@ -559,10 +558,6 @@ error:
         free(option->file_size_list);
         option->file_size_list = NULL;
     }
-    if (option->file_fd_list != NULL) {
-        free(option->file_fd_list);
-        option->file_fd_list = NULL;
-    }
 
     return 1;
 }
@@ -574,9 +569,8 @@ mb_set_option(micbench_io_option_t *option_)
 }
 
 void
-do_async_io(th_arg_t *arg)
+do_async_io(th_arg_t *arg, int *fd_list)
 {
-    int *fd_list;
     meter_t *meter;
     struct timeval start_tv;
     int64_t addr;
@@ -594,7 +588,6 @@ do_async_io(th_arg_t *arg)
 
     srand48_r(arg->common_seed ^ arg->tid, &rand);
 
-    fd_list = arg->fd_list;
     meter = arg->meter;
     aiom = mb_aiom_make(option.aio_nr_events);
     if (aiom == NULL) {
@@ -711,7 +704,7 @@ do_async_io(th_arg_t *arg)
 }
 
 void
-do_sync_io(th_arg_t *th_arg)
+do_sync_io(th_arg_t *th_arg, int *fd_list)
 {
     struct timeval       start_tv;
     struct timeval       timer;
@@ -722,13 +715,10 @@ do_sync_io(th_arg_t *th_arg)
     int                  i;
 
     int file_idx;
-    int *fd_list;
     int64_t *ofst_list;
     int64_t *ofst_min_list;
     int64_t *ofst_max_list;
 
-
-    fd_list = th_arg->fd_list;
     meter = th_arg->meter;
     srand48_r(th_arg->common_seed ^ th_arg->tid, &rand);
 
@@ -846,6 +836,9 @@ thread_handler(void *arg)
 {
     th_arg_t *th_arg = (th_arg_t *) arg;
     mb_affinity_t *aff;
+    int i;
+    int fd;
+    int *fd_list;
 
     tid = syscall(SYS_gettid);
     th_arg->tid = tid;
@@ -859,13 +852,30 @@ thread_handler(void *arg)
         }
     }
 
+    fd_list = malloc(sizeof(int) * option.nr_files);
+    for (i = 0; i < option.nr_files; i++) {
+        if ((fd = open(option.file_path_list[i], option.open_flags)) == -1){
+            perror("main:open(2)");
+            exit(EXIT_FAILURE);
+        }
+        fd_list[i] = fd;
+    }
+
     if (option.aio == true) {
         if (option.verbose) fprintf(stderr, "do_async_io\n");
-        do_async_io(th_arg);
+        do_async_io(th_arg, fd_list);
     } else {
         if (option.verbose) fprintf(stderr, "do_sync_io\n");
-        do_sync_io(th_arg);
+        do_sync_io(th_arg, fd_list);
     }
+
+    for (i = 0; i < option.nr_files; i++) {
+        if (close(fd_list[i]) == -1){
+            perror("main:close(2)");
+            exit(EXIT_FAILURE);
+        }
+    }
+
 
     return NULL;
 }
@@ -881,8 +891,6 @@ micbench_io_main(int argc, char **argv)
     meter_t *meter;
     long common_seed;
     double exec_time;
-    int fd;
-    int *fd_list;
 
     if (getenv("MICBENCH") == NULL) {
         fprintf(stderr, "Variable MICBENCH is not set.\n"
@@ -915,17 +923,10 @@ micbench_io_main(int argc, char **argv)
     if (option.direct) {
         flags |= O_DIRECT;
     }
+    option.open_flags = flags;
 
+    // TODO: Good randomization
     common_seed = time(NULL) * getpid();
-
-    fd_list = malloc(sizeof(int) * option.nr_files);
-    for (i = 0; i < option.nr_files; i++) {
-        if ((fd = open(option.file_path_list[i], flags)) == -1){
-            perror("main:open(2)");
-            exit(EXIT_FAILURE);
-        }
-        fd_list[i] = fd;
-    }
 
     if (option.aio_tracefile != NULL) {
         aio_tracefile = fopen(option.aio_tracefile, "w");
@@ -936,7 +937,6 @@ micbench_io_main(int argc, char **argv)
     for(i = 0;i < option.multi;i++){
         th_args[i].id          = i;
         th_args[i].self        = malloc(sizeof(pthread_t));
-        th_args[i].fd_list     = fd_list;
         th_args[i].common_seed = common_seed;
         meter              = th_args[i].meter = malloc(sizeof(meter_t));
         meter->iowait_time = 0;
@@ -952,11 +952,6 @@ micbench_io_main(int argc, char **argv)
         pthread_join(*th_args[i].self, NULL);
     }
     exec_time = mb_elapsed_time_from(&start_tv);
-
-    for (i = 0; i < option.nr_files; i++) {
-        close(fd_list[i]);
-    }
-    free(fd_list);
 
     int64_t count_sum = 0;
     double iowait_time_sum = 0;
