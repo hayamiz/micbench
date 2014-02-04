@@ -499,8 +499,8 @@ class IoCommand < BaseCommand
     @options[:aio_nr_events] = 64
     @options[:aio_tracefile] = nil
     @options[:blocksize] = 16 * 1024
-    @options[:offset_start] = 0
-    @options[:offset_end] = 0
+    @options[:offset_start] = nil
+    @options[:offset_end] = nil
     @options[:misalign] = 0
     @options[:continue_on_error] = false
     @options[:verbose] = false
@@ -557,8 +557,12 @@ class IoCommand < BaseCommand
                          @options[:mode] == :rwmix ? ["-M", @options[:rwmix].to_s] :
                          []),
                         "-b", @options[:blocksize],
-                        "-s", @options[:offset_start],
-                        "-e", @options[:offset_end],
+                        (@options[:offset_start] ?
+                         ["-s", @options[:offset_start]] :
+                         []),
+                        (@options[:offset_end] ?
+                         ["-e", @options[:offset_end]] :
+                         []),
                         "-z", @options[:misalign],
                         (@options[:continue_on_error] ? "-C" : []),
                         (@options[:verbose] ? "-v" : []),
