@@ -12,17 +12,22 @@
   * Ruby interpreter (1.8.7 or later)
   * numactl
   * libnuma
-  * libtool(for build)
-  * automake(for build)
-  * libaio(for build)
+  * libaio
+  * libtool (for developers)
+  * automake (for developers)
 
 Currently it also requires Nehalem or newer x86_64 architectures.
 
  How to build
 --------------
-    $ ./autogen.sh
+
     $ ./configure
     $ make
+
+If you are building in git-cloned repository, you have to generate `configure` script by running:
+
+    $ ./autogen.sh
+
 
  Examples of Usage Scenario
 ----------------------------
