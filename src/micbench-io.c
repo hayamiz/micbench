@@ -352,6 +352,18 @@ accum_io_time %lf [sec]\n\
            result->iowait_time);
 }
 
+void
+print_result_json(result_t *result)
+{
+    printf("{\"exec_time\":%lf,\"iops\":%lf,\"response_time\":%lf,"
+           "\"transfer_rate\":%lf,\"accum_io_time\":%lf}\n",
+           result->exec_time,
+           result->iops,
+           result->response_time,
+           result->bandwidth / MEBI,
+           result->iowait_time);
+}
+
 int
 parse_args(int argc, char **argv, micbench_io_option_t *option)
 {
@@ -378,6 +390,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->ofst_end = -1;
     option->misalign = 0;
     option->continue_on_error = false;
+    option->json = false;
     option->verbose = false;
     option->open_flags = O_RDONLY;
 
@@ -385,7 +398,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->file_size_list = NULL;
 
     optind = 1;
-    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdAE:T:WM:b:s:e:z:c:Cv")) != -1){
+    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdAE:T:WM:b:s:e:z:c:Cjv")) != -1){
         switch(optchar){
         case 'N': // noop
             option->noop = true;
@@ -467,6 +480,9 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
             break;
         case 'C': // ontinue on error
             option->continue_on_error = true;
+            break;
+        case 'j': // json print mode
+            option->json = true;
             break;
         case 'v': // verbose
             option->verbose = true;
@@ -967,7 +983,11 @@ micbench_io_main(int argc, char **argv)
     result.iops = count_sum / result.exec_time;
     result.bandwidth = count_sum * option.blk_sz / result.exec_time;
 
-    print_result(&result);
+    if (option.json) {
+        print_result_json(&result);
+    } else {
+        print_result(&result);
+    }
 
     for(i = 0;i < option.multi;i++){
         free(th_args[i].meter);

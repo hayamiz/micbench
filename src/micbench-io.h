@@ -53,6 +53,8 @@ typedef struct {
 
     bool continue_on_error;
 
+    bool json;
+
     bool verbose;
 
     bool noop;

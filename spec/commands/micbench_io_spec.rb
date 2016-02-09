@@ -44,11 +44,12 @@ describe IoCommand do
       @options[:async].should == false
       @options[:aio_nr_events].should == 64
       @options[:blocksize].should == 16*1024
-      @options[:offset_start].should == 0
-      @options[:offset_end].should == 0
+      @options[:offset_start].should == nil
+      @options[:offset_end].should == nil
       @options[:misalign].should == 0
       @options[:verbose].should == false
       @options[:debug].should == false
+      @options[:json].should == false
       # @options[].should
     end
 
@@ -97,6 +98,11 @@ describe IoCommand do
       @iocommand.parse_args(%w|--rwmix 0.5|)
       @options[:mode].should == :rwmix
       @options[:rwmix].should == 0.5
+    end
+
+    it "should parse --json option" do
+      @iocommand.parse_args(%w|--json|)
+      @options[:json].should == true
     end
 
     it "should parse more options" do

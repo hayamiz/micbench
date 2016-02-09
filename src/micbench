@@ -478,6 +478,9 @@ class IoCommand < BaseCommand
         parse_error.call("--misalign requires 0 or positive integer.")
       end
     end
+    @parser.on('--json') do
+      @options[:json] = true
+    end
     @parser.on('-v', '--verbose') do
       @options[:verbose] = true
     end
@@ -503,6 +506,7 @@ class IoCommand < BaseCommand
     @options[:offset_end] = nil
     @options[:misalign] = 0
     @options[:continue_on_error] = false
+    @options[:json] = false
     @options[:verbose] = false
     @options[:debug] = false
     @options[:rwmix] = 0.0
@@ -565,6 +569,7 @@ class IoCommand < BaseCommand
                          []),
                         "-z", @options[:misalign],
                         (@options[:continue_on_error] ? "-C" : []),
+                        (@options[:json] ? "-j" : []),
                         (@options[:verbose] ? "-v" : []),
                         device_or_files].flatten.join(" ")
 
