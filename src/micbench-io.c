@@ -679,6 +679,7 @@ do_async_io(th_arg_t *arg, int *fd_list)
             if (mb_read_or_write() == MB_DO_READ) {
                 mb_aiom_prep_pread(aiom, fd_list[file_idx], buf, option.blk_sz, addr);
             } else {
+                mb_rand_buf(&rand, buf, option.blk_sz);
                 mb_aiom_prep_pwrite(aiom, fd_list[file_idx], buf, option.blk_sz, addr);
             }
         }
@@ -790,6 +791,7 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
                 if (mb_read_or_write() == MB_DO_READ) {
                     mb_preadall(fd_list[file_idx], buf, option.blk_sz, addr, option.continue_on_error);
                 } else {
+                    mb_rand_buf(&rand, buf, option.blk_sz);
                     mb_pwriteall(fd_list[file_idx], buf, option.blk_sz, addr, option.continue_on_error);
                 }
                 iowait_time += mb_elapsed_time_from(&timer);
@@ -824,6 +826,7 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
                 if (option.read) {
                     mb_readall(fd_list[file_idx], buf, option.blk_sz, option.continue_on_error);
                 } else if (option.write) {
+                    mb_rand_buf(&rand, buf, option.blk_sz);
                     mb_writeall(fd_list[file_idx], buf, option.blk_sz, option.continue_on_error);
                 } else {
                     fprintf(stderr, "Only read or write can be specified in seq.");

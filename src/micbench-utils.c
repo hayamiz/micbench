@@ -198,6 +198,24 @@ mb_rand_range_long(struct drand48_data* rand, long from, long to)
     return ret * width + from;
 }
 
+int
+mb_rand_buf(struct drand48_data* rand, char *buf, int buf_size)
+{
+	long int num;
+	long int *ptr;
+	int i;
+
+	lrand48_r(rand, &num);
+
+	ptr = (long int *) buf;
+
+	for (i = 0; i < buf_size / sizeof(num); i++) {
+		*(ptr + i) = num;
+	}
+
+	return 0;
+}
+
 int64_t
 mb_getsize(const char *path)
 {

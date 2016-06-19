@@ -76,6 +76,7 @@ long   mb_elapsed_usec_from(struct timeval *tv);
 
 unsigned long mb_rand_range_ulong (struct drand48_data* rand, unsigned long from, unsigned long to);
 long          mb_rand_range_long  (struct drand48_data* rand, long from, long to);
+int           mb_rand_buf         (struct drand48_data* rand, char *buf, int buf_size);
 
 int64_t mb_getsize(const char *path);
 
