@@ -231,7 +231,7 @@ class MemoryCommand < BaseCommand
     if ! argv.empty?
       $stderr.puts("Following arguments are ignored: #{argv.join(' ')}")
     end
-    real_command = File.join(File.dirname(__FILE__), "micbench-mem")
+    real_command = File.join(File.dirname(File.readlink(__FILE__)), "micbench-mem")
     [real_command,
      "-m", @options[:multi],
      "-t", @options[:timeout],
@@ -351,7 +351,7 @@ class LockCommand < BaseCommand
     if ! argv.empty?
       $stderr.puts("Following arguments are ignored: #{argv.join(' ')}")
     end
-    real_command = File.join(File.dirname(__FILE__), "micbench-lock")
+    real_command = File.join(File.dirname(File.readlink(__FILE__)), "micbench-lock")
     real_command_str = [real_command,
                         "-m", @options[:multi],
                         "-M", @options[:mode],
@@ -544,7 +544,7 @@ class IoCommand < BaseCommand
       device_or_files.push(dof)
     end
 
-    real_command = File.join(File.dirname(__FILE__), "micbench-io")
+    real_command = File.join(File.dirname(File.readlink(__FILE__)), "micbench-io")
     real_command_str = [real_command,
                         (@options[:noop] ? "-N" : []),
                         "-m", @options[:multi],
