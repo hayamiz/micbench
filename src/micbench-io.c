@@ -705,6 +705,13 @@ do_async_io(th_arg_t *arg, int *fd_list)
             event = &aiom->events[i];
 
             mb_res_pool_push(buffer_pool, event->obj->u.c.buf);
+
+            /* do bogus comp after I/O completion */
+            long idx;
+            volatile double dummy = 0.0;
+            for(idx = 0; idx < option.bogus_comp; idx++){
+                dummy += idx;
+            }
         }
     }
 
