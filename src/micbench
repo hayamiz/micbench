@@ -463,7 +463,7 @@ class IoCommand < BaseCommand
       if offset =~ /\A\d+\Z/
         @options[:offset_start] = offset.to_i
       else
-        parse_error.call("--offset-start requires 0 or positive integer.")
+        @options[:offset_start_byte] = parse_size(offset)
       end
     end
     @parser.on('-e', '--offset-end OFFSET',
@@ -471,7 +471,7 @@ class IoCommand < BaseCommand
       if offset =~ /\A\d+\Z/
         @options[:offset_end] = offset.to_i
       else
-        parse_error.call("--offset-end requires 0 or positive integer.")
+        @options[:offset_end_byte] = parse_size(offset)
       end
     end
     @parser.on('-C', '--continue-on-error',
@@ -531,6 +531,14 @@ class IoCommand < BaseCommand
       cpu_bitmap = (0..[max_cpuid, $logicores - 1].min).map{|cpuid| cpuset.include?(cpuid) ? "1" : "0"}.join("")
       mnode_bitmap = (0..[max_mnodeid, $nodes - 1].min).map{|nodeid| mnodeset.include?(nodeid) ? "1" : "0"}.join("")
       "#{tid}:#{cpu_bitmap}:#{mnode_bitmap}"
+    end
+
+    if @options[:offset_start_byte] && @options[:offset_start_byte] % @options[:blocksize] != 0
+      raise ArgumentError.new("'offset-start' must be aligned with 'blocksize'")
+    end
+
+    if @options[:offset_end_byte] && @options[:offset_end_byte] % @options[:blocksize] != 0
+      raise ArgumentError.new("'offset-end' must be aligned with 'blocksize'")
     end
   end
 
@@ -599,7 +607,7 @@ EOS
 end
 
 def parse_size(sz_str)
-  if sz_str =~ /\A(\d+)([kKmMgG]?)[bB]?\Z/
+  if sz_str =~ /\A(\d+)([kKmMgG]?)[bB]\Z/
     size = $~[1].to_i
     sz_prefix = $~[2]
     case sz_prefix
@@ -613,7 +621,7 @@ def parse_size(sz_str)
 
     size
   else
-    nil
+    raise ArgumentError.new("Invalid format: #{sz_str}")
   end
 end
 
