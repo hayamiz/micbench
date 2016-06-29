@@ -310,6 +310,26 @@ mb_res_pool_push(mb_res_pool_t *pool, aiom_cb_t *aiom_cb)
 void
 print_option()
 {
+    const char *pattern_str;
+
+    switch(option.pattern) {
+    case PATTERN_SEQ:
+        pattern_str = "sequential";
+        break;
+    case PATTERN_RAND:
+        pattern_str = "random";
+        break;
+    case PATTERN_SEEKDIST:
+        pattern_str = "seekdist";
+        break;
+    case PATTERN_SEEKINCR:
+        pattern_str = "seekincr";
+        break;
+    default:
+        pattern_str = "(unknown)";
+        break;
+    }
+
     fprintf(stderr, "== configuration summary ==\n\
 multiplicity    %d\n\
 access_pattern  %s\n\
@@ -323,7 +343,7 @@ offset_end      %ld\n\
 misalign        %ld\n\
 ",
             option.multi,
-            (option.seq ? "sequential" : "random"),
+            pattern_str,
             (option.read ? "read" :
              option.write ? "write" : "mix"),
             (option.direct ? "yes" : "no"),
@@ -379,13 +399,13 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->read = true;
     option->write = false;
     option->rwmix = 0.0;
-    option->seq = true;
-    option->rand = false;
+    option->pattern = PATTERN_SEQ;
     option->direct = false;
     option->aio = false;
     option->aio_nr_events = 64;
     option->aio_tracefile = NULL;
     option->blk_sz = 64 * KIBI;
+    option->seekdist_stride = 16 * 1024;
     option->ofst_start = -1;
     option->ofst_end = -1;
     option->misalign = 0;
@@ -398,7 +418,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->file_size_list = NULL;
 
     optind = 1;
-    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSdAE:T:WM:b:s:e:z:c:Cjv")) != -1){
+    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSDIdAE:T:WM:b:s:e:B:z:c:Cl:jv")) != -1){
         switch(optchar){
         case 'N': // noop
             option->noop = true;
@@ -433,12 +453,16 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
             option->timeout = strtol(optarg, NULL, 10);
             break;
         case 'R': // random
-            option->rand = true;
-            option->seq = false;
+            option->pattern = PATTERN_RAND;
             break;
         case 'S': // sequential
-            option->seq = true;
-            option->rand = false;
+            option->pattern = PATTERN_SEQ;
+            break;
+        case 'D': // constant seek distance
+            option->pattern = PATTERN_SEEKDIST;
+            break;
+        case 'I': // increasing seek distance
+            option->pattern = PATTERN_SEEKINCR;
             break;
         case 'd': // direct IO
             option->direct = true;
@@ -471,6 +495,9 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
             break;
         case 'e': // end block
             option->ofst_end = strtol(optarg, NULL, 10);
+            break;
+        case 'B': // stride size of seekdist
+            option->seekdist_stride = strtol(optarg, NULL, 10);
             break;
         case 'z': // misalignment
             option->misalign = strtol(optarg, NULL, 10);
@@ -636,7 +663,7 @@ do_async_io(th_arg_t *arg, int *fd_list)
             ofst_max_list[i] = option.file_size_list[i] / option.blk_sz;
         }
 
-        if (option.seq) {
+        if (option.pattern == PATTERN_SEQ) {
             ofst_list[i] = ofst_min_list[i] + (ofst_max_list[i] - ofst_min_list[i]) * arg->id / option.multi;
         } else {
             ofst_list[i] = ofst_min_list[i];
@@ -654,7 +681,7 @@ do_async_io(th_arg_t *arg, int *fd_list)
     while(mb_elapsed_time_from(&start_tv) < option.timeout) {
         while(mb_aiom_nr_submittable(aiom) > 0) {
             // select file
-            if (option.rand) {
+            if (option.pattern == PATTERN_RAND) {
                 long ret;
                 lrand48_r(&rand, &ret);
                 file_idx = ret % option.nr_files;
@@ -663,7 +690,7 @@ do_async_io(th_arg_t *arg, int *fd_list)
                 file_idx %= option.nr_files;
             }
 
-            if (option.rand) {
+            if (option.pattern == PATTERN_RAND) {
                 ofst_list[file_idx] = (int64_t) mb_rand_range_long(&rand,
                                                                    ofst_min_list[file_idx],
                                                                    ofst_max_list[file_idx]);
@@ -742,6 +769,7 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
     int64_t *ofst_list;
     int64_t *ofst_min_list;
     int64_t *ofst_max_list;
+    int64_t *seekdist_side_list; // 0:lower LBA side, 1:upper LBA side
 
     meter = th_arg->meter;
     srand48_r(th_arg->common_seed ^ th_arg->tid, &rand);
@@ -755,6 +783,7 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
     ofst_list = malloc(sizeof(int64_t) * option.nr_files);
     ofst_min_list = malloc(sizeof(int64_t) * option.nr_files);
     ofst_max_list = malloc(sizeof(int64_t) * option.nr_files);
+    seekdist_side_list = malloc(sizeof(int64_t) * option.nr_files);
 
     for (i = 0; i < option.nr_files; i++) {
         if (option.ofst_start >= 0) {
@@ -769,18 +798,24 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
             ofst_max_list[i] = option.file_size_list[i] / option.blk_sz;
         }
 
-        if (option.seq) {
+        if (option.pattern == PATTERN_SEQ) {
             ofst_list[i] = ofst_min_list[i]
                 + (ofst_max_list[i] - ofst_min_list[i]) * th_arg->id / option.multi;
+        } else if (option.pattern == PATTERN_SEEKDIST) {
+            ofst_list[i] = ofst_max_list[i] - option.seekdist_stride;
         } else {
             ofst_list[i] = ofst_min_list[i];
+        }
+
+        if (option.pattern == PATTERN_SEEKDIST) {
+            seekdist_side_list[i] = 0;
         }
     }
 
     file_idx = 0;
 
     GETTIMEOFDAY(&start_tv);
-    if (option.rand){
+    if (option.pattern == PATTERN_RAND){
         while (mb_elapsed_time_from(&start_tv) < option.timeout) {
             for(i = 0;i < 100; i++){
                 // select file
@@ -824,6 +859,61 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
                     ofst_list[file_idx] = ofst_min_list[file_idx];
                 }
                 addr = ofst_list[file_idx] * option.blk_sz + option.misalign;
+                if (lseek64(fd_list[file_idx], addr, SEEK_SET) == -1){
+                    perror("do_sync_io:lseek64");
+                    exit(EXIT_FAILURE);
+                }
+
+                GETTIMEOFDAY(&timer);
+                if (option.read) {
+                    mb_readall(fd_list[file_idx], buf, option.blk_sz, option.continue_on_error);
+                } else if (option.write) {
+                    mb_rand_buf(&rand, buf, option.blk_sz);
+                    mb_writeall(fd_list[file_idx], buf, option.blk_sz, option.continue_on_error);
+                } else {
+                    fprintf(stderr, "Only read or write can be specified in seq.");
+                    exit(EXIT_FAILURE);
+                }
+                iowait_time += mb_elapsed_time_from(&timer);
+                io_count ++;
+
+                long idx;
+                volatile double dummy = 0.0;
+                for(idx = 0; idx < option.bogus_comp; idx++){
+                    dummy += idx;
+                }
+            }
+        }
+    } else if (option.pattern == PATTERN_SEEKDIST) {
+        while (mb_elapsed_time_from(&start_tv) < option.timeout) {
+            for(i = 0;i < 100; i++){
+                int64_t ofst;
+
+                // select file
+                file_idx++;
+                file_idx %= option.nr_files;
+
+                // change offset
+
+                if (seekdist_side_list[file_idx] == 0) {
+                    // move to upper LBA side
+                    ofst =
+                        (int64_t) mb_rand_range_long(&rand,
+                                                     ofst_max_list[file_idx] - option.seekdist_stride,
+                                                     ofst_max_list[file_idx]);
+                } else {
+                    // move to lower LBA side
+                    ofst =
+                        (int64_t) mb_rand_range_long(&rand,
+                                                     ofst_min_list[file_idx],
+                                                     ofst_min_list[file_idx] + option.seekdist_stride);
+                }
+                seekdist_side_list[file_idx] ^= 1;
+
+                addr = ofst * option.blk_sz + option.misalign;
+
+                // printf("%d\t%ld\n", file_idx, addr);
+
                 if (lseek64(fd_list[file_idx], addr, SEEK_SET) == -1){
                     perror("do_sync_io:lseek64");
                     exit(EXIT_FAILURE);

@@ -7,13 +7,19 @@
 
 #include <libaio.h>
 
+typedef enum {
+    PATTERN_SEQ,
+    PATTERN_RAND,
+    PATTERN_SEEKDIST,
+    PATTERN_SEEKINCR,
+} mb_io_pattern_t;
+
 typedef struct {
     // multiplicity of IO
     int multi;
 
     // access mode
-    bool seq;
-    bool rand;
+    mb_io_pattern_t pattern;
     bool direct;
     bool read;
     bool write;
@@ -25,6 +31,10 @@ typedef struct {
 
     // file name of trace log of aio events
     char *aio_tracefile;
+
+    // I/O activity log file
+    char *logfile_path;
+    FILE *logfile;
 
     // thread affinity assignment
     mb_affinity_t **affinities;
@@ -39,6 +49,9 @@ typedef struct {
     // offset
     int64_t ofst_start;
     int64_t ofst_end;
+
+    // stride size of seekdist (should be much greater than on-disk read buffer)
+    int64_t seekdist_stride;
 
     int64_t misalign;
 
