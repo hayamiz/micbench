@@ -1041,8 +1041,16 @@ micbench_io_main(int argc, char **argv)
     }
     option.open_flags = flags;
 
-    // TODO: Good randomization
-    common_seed = time(NULL) * getpid();
+
+    // initialize common seed value with /dev/urandom
+    FILE *f;
+    f = fopen("/dev/urandom", "r");
+    if (f == NULL) {
+        perror("Failed to open /dev/urandom.\n");
+        exit(EXIT_FAILURE);
+    }
+    fread(&common_seed, sizeof(common_seed), 1, f);
+    fclose(f);
 
     if (option.aio_tracefile != NULL) {
         aio_tracefile = fopen(option.aio_tracefile, "w");
