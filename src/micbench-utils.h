@@ -34,9 +34,9 @@ typedef struct {
 
 // macros for struct timeval
 #define TV2LONG(tv)	(((long) (tv).tv_sec) * 1000000L + (tv).tv_usec)
-#define TV2DOUBLE(tv)	(double) (tv).tv_sec + ((double) (tv).tv_usec) / 1000000.0
+#define TV2DOUBLE(tv)	((double) (tv).tv_sec + ((double) (tv).tv_usec / 1000000.0))
 #define TVPTR2LONG(tv)	(((long) (tv)->tv_sec) * 1000000L + (tv)->tv_usec)
-#define TVPTR2DOUBLE(tv)	(double) (tv)->tv_sec + ((double) (tv)->tv_usec) / 1000000.0
+#define TVPTR2DOUBLE(tv)	((double) (tv)->tv_sec + ((double) (tv)->tv_usec / 1000000.0))
 #define GETTIMEOFDAY(tv_ptr)                                    \
     {                                                           \
         if (0 != gettimeofday(tv_ptr, NULL)) {                  \
