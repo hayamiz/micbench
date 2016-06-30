@@ -304,8 +304,7 @@ test_parse_args_defaults(void)
     cut_assert_true(option.read);
     cut_assert_false(option.write);
     cut_assert_equal_double(0, 0.001, option.rwmix);
-    cut_assert_true(option.seq);
-    cut_assert_false(option.rand);
+	cut_assert_equal_int(PATTERN_SEQ, option.pattern);
     cut_assert_false(option.direct);
     cut_assert_equal_int(64 * KIBI, option.blk_sz);
     cut_assert_false(option.verbose);
