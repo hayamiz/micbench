@@ -43,6 +43,10 @@ typedef struct {
 } th_arg_t;
 
 
+static void mb_log_io_activity(struct timeval *issue_tv, struct timeval *complete_tv,
+                               const char *file, int64_t blockaddr, int blocksz);
+
+
 mb_aiom_t *
 mb_aiom_make(int nr_events)
 {
@@ -106,9 +110,18 @@ int
 mb_aiom_submit(mb_aiom_t *aiom)
 {
     int ret;
+    int i;
+    struct timeval submit_time;
 
     if (aiom->nr_pending == 0) {
         return 0;
+    }
+
+    GETTIMEOFDAY(&submit_time);
+    for (i = 0; i < aiom->nr_pending; i++) {
+        aiom_cb_t *cb;
+        cb = aiom->pending[i];
+        cb->submit_time = submit_time;
     }
 
     ret = io_submit(aiom->context, aiom->nr_pending, (struct iocb **) aiom->pending);
@@ -140,6 +153,7 @@ mb_aiom_prep_pread   (mb_aiom_t *aiom, int fd,
     }
     io_prep_pread(&aiom_cb->iocb, fd, buf, count, offset);
     GETTIMEOFDAY(&aiom_cb->submit_time);
+    aiom_cb->file_idx = -1;
 
     aiom->pending[aiom->nr_pending++] = aiom_cb;
 
@@ -195,6 +209,9 @@ __mb_aiom_getevents(mb_aiom_t *aiom, long min_nr, long nr,
     }
 
     for(i = 0; i < nr_completed; i++){
+        struct timeval t1;
+        const char *file_path;
+
         event = &aiom->events[i];
         aiom_cb = (aiom_cb_t *) event->obj;
 
@@ -203,8 +220,17 @@ __mb_aiom_getevents(mb_aiom_t *aiom, long min_nr, long nr,
             fprintf(stderr, "fatal error: res = %ld, res2 = %ld\n",
                     (long) event->res, (long) event->res2);
         }
+        GETTIMEOFDAY(&t1);
 
         aiom->iowait += mb_elapsed_time_from(&aiom_cb->submit_time);
+
+        if (aiom_cb->file_idx == -1) {
+            file_path = "(null)";
+        } else {
+            file_path = option.file_path_list[aiom_cb->file_idx];
+        }
+        mb_log_io_activity(&aiom_cb->submit_time, &t1,
+                           file_path, aiom_cb->iocb.u.c.offset, option.blk_sz);
 
         mb_res_pool_push(aiom->cbpool, aiom_cb);
     }
@@ -410,6 +436,8 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->ofst_end = -1;
     option->misalign = 0;
     option->continue_on_error = false;
+    option->logfile = NULL;
+    option->logfile_path = NULL;
     option->json = false;
     option->verbose = false;
     option->open_flags = O_RDONLY;
@@ -508,6 +536,9 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
         case 'C': // ontinue on error
             option->continue_on_error = true;
             break;
+        case 'l': // logfile
+            option->logfile_path = strdup(optarg);
+            break;
         case 'j': // json print mode
             option->json = true;
             break;
@@ -590,6 +621,14 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
         goto error;
     }
 
+    if (option->logfile_path != NULL) {
+        option->logfile = fopen(option->logfile_path, "w");
+        if (option->logfile == NULL) {
+            fprintf(stderr, "Failed to open log file for write: %s\n", option->logfile_path);
+            goto error;
+        }
+    }
+
     return 0;
 
 error:
@@ -609,6 +648,39 @@ void
 mb_set_option(micbench_io_option_t *option_)
 {
     memcpy(&option, option_, sizeof(micbench_io_option_t));
+}
+
+static char buf[1024];
+static long logcount = 0;
+static long log_start_usec;
+
+static void
+mb_log_io_activity(struct timeval *issue_tv, struct timeval *complete_tv,
+                   const char *file, int64_t blockaddr, int blocksz)
+{
+    long issue_usec, complete_usec;
+    double rt;
+
+    if (option.logfile == NULL) {
+        return;
+    }
+
+    issue_usec = TVPTR2LONG(issue_tv);
+    complete_usec = TVPTR2LONG(complete_tv);
+    rt = TVPTR2DOUBLE(complete_tv) - TVPTR2DOUBLE(issue_tv);
+
+    if (logcount == 0) {
+        log_start_usec = issue_usec;
+    }
+
+    sprintf(buf, "%ld\t%ld\t%ld\t%lf\t%s\t%ld\t%d\n",
+            issue_usec, complete_usec, issue_usec - log_start_usec, rt, file, blockaddr, blocksz);
+
+    if (fputs(buf, option.logfile) == EOF) {
+        perror("fputs(3) failed.");
+    }
+
+    logcount++;
 }
 
 void
@@ -758,7 +830,8 @@ void
 do_sync_io(th_arg_t *th_arg, int *fd_list)
 {
     struct timeval       start_tv;
-    struct timeval       timer;
+    struct timeval       t0;
+    struct timeval       t1;
     meter_t             *meter;
     struct drand48_data  rand;
     int64_t              addr;
@@ -829,15 +902,18 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
 
                 addr = ofst_list[file_idx] * option.blk_sz + option.misalign;
 
-                GETTIMEOFDAY(&timer);
+                GETTIMEOFDAY(&t0);
                 if (mb_read_or_write() == MB_DO_READ) {
                     mb_preadall(fd_list[file_idx], buf, option.blk_sz, addr, option.continue_on_error);
                 } else {
                     mb_rand_buf(&rand, buf, option.blk_sz);
                     mb_pwriteall(fd_list[file_idx], buf, option.blk_sz, addr, option.continue_on_error);
                 }
-                iowait_time += mb_elapsed_time_from(&timer);
+                GETTIMEOFDAY(&t1);
+                iowait_time += (TV2LONG(t1) - TV2LONG(t0))/1.0e6;
                 io_count ++;
+
+                mb_log_io_activity(&t0, &t1, option.file_path_list[file_idx], addr, option.blk_sz);
 
                 long idx;
                 volatile double dummy = 0.0;
@@ -846,7 +922,7 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
                 }
             }
         }
-    } else if (option.seq) {
+    } else if (option.pattern == PATTERN_SEQ) {
         while (mb_elapsed_time_from(&start_tv) < option.timeout) {
             for(i = 0;i < 100; i++){
                 // select file
@@ -864,7 +940,7 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
                     exit(EXIT_FAILURE);
                 }
 
-                GETTIMEOFDAY(&timer);
+                GETTIMEOFDAY(&t0);
                 if (option.read) {
                     mb_readall(fd_list[file_idx], buf, option.blk_sz, option.continue_on_error);
                 } else if (option.write) {
@@ -874,8 +950,11 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
                     fprintf(stderr, "Only read or write can be specified in seq.");
                     exit(EXIT_FAILURE);
                 }
-                iowait_time += mb_elapsed_time_from(&timer);
+                GETTIMEOFDAY(&t1);
+                iowait_time += (TV2LONG(t1) - TV2LONG(t0))/1.0e6;
                 io_count ++;
+
+                mb_log_io_activity(&t0, &t1, option.file_path_list[file_idx], addr, option.blk_sz);
 
                 long idx;
                 volatile double dummy = 0.0;
@@ -919,7 +998,7 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
                     exit(EXIT_FAILURE);
                 }
 
-                GETTIMEOFDAY(&timer);
+                GETTIMEOFDAY(&t0);
                 if (option.read) {
                     mb_readall(fd_list[file_idx], buf, option.blk_sz, option.continue_on_error);
                 } else if (option.write) {
@@ -929,8 +1008,11 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
                     fprintf(stderr, "Only read or write can be specified in seq.");
                     exit(EXIT_FAILURE);
                 }
-                iowait_time += mb_elapsed_time_from(&timer);
+                GETTIMEOFDAY(&t1);
+                iowait_time += (TV2LONG(t1) - TV2LONG(t0))/1.0e6;
                 io_count ++;
+
+                mb_log_io_activity(&t0, &t1, option.file_path_list[file_idx], addr, option.blk_sz);
 
                 long idx;
                 volatile double dummy = 0.0;

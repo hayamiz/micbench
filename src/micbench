@@ -490,6 +490,10 @@ class IoCommand < BaseCommand
         @options[:seekdist_stride_byte] = parse_size(size)
       end
     end
+    @parser.on('-l', '--logfile PATH',
+               "Log file path where each I/O activity is recorded.") do |path|
+      @options[:logfile] = path
+    end
     @parser.on('-C', '--continue-on-error',
                "Do not exit on IO error") do
       @options[:continue_on_error] = true
@@ -614,6 +618,8 @@ class IoCommand < BaseCommand
                         "-E", @options[:aio_nr_events],
                         (@options[:aio_tracefile] ?
                          ["-T", @options[:aio_tracefile]] : []),
+                        (@options[:logfile] ?
+                         ["-l", @options[:logfile]] : []),
                         (@options[:mode] == :write ? "-W" :
                          @options[:mode] == :rwmix ? ["-M", @options[:rwmix].to_s] :
                          []),

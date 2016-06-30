@@ -97,6 +97,7 @@ typedef struct {
 typedef struct aiom_cb {
     struct iocb iocb;
     struct timeval submit_time;
+    int file_idx;
 } aiom_cb_t;
 
 // AIO manager
