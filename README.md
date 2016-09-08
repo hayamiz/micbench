@@ -34,7 +34,7 @@ If you are building in git-cloned repository, you have to generate `configure` s
 
 ### Measuring access latency L1
 
-    $ micbench mem -m 1 -t 10 -R -a 0:c0 -s 16K -v
+    $ micbench mem -m 1 -t 10 -R -a 0:c0 -s 16KB -v
     access_pattern  random
     multiplicity    1
     local   true
