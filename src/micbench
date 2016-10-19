@@ -461,9 +461,9 @@ class IoCommand < BaseCommand
       @options[:aio_tracefile] = file
     end
     @parser.on('-b', '--blocksize SIZE',
-              "Size of IO block (default: 16k)") do |size|
+              "Size of IO block (default: 16KB)") do |size|
       unless @options[:blocksize] = parse_size(size)
-        parse_error.call("invalid argument for --size: #{size}")
+        parse_error.call("invalid argument for --blocksize: #{size}")
       end
     end
     @parser.on('-s', '--offset-start OFFSET',
