@@ -64,6 +64,8 @@ typedef struct {
     // bogus computation
     long bogus_comp; // # of computation to be operated
 
+    useconds_t iosleep;
+
     bool continue_on_error;
 
     bool json;

@@ -362,7 +362,8 @@ access_pattern  %s\n\
 access_mode     %s\n\
 direct_io       %s\n\
 timeout         %d\n\
-bogus_comp		%ld\n\
+bogus_comp      %ld\n\
+iosleep         %d\n\
 block_size      %d\n\
 offset_start    %ld\n\
 offset_end      %ld\n\
@@ -375,6 +376,7 @@ misalign        %ld\n\
             (option.direct ? "yes" : "no"),
             option.timeout,
             option.bogus_comp,
+            option.iosleep,
             option.blk_sz,
             option.ofst_start,
             option.ofst_end,
@@ -422,6 +424,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->affinities = NULL;
     option->timeout = 60;
     option->bogus_comp = 0;
+    option->iosleep = 0;
     option->read = true;
     option->write = false;
     option->rwmix = 0.0;
@@ -446,7 +449,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->file_size_list = NULL;
 
     optind = 1;
-    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSDIdAE:T:WM:b:s:e:B:z:c:Cl:jv")) != -1){
+    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSDIdAE:T:WM:b:s:e:B:z:c:i:Cl:jv")) != -1){
         switch(optchar){
         case 'N': // noop
             option->noop = true;
@@ -532,6 +535,9 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
             break;
         case 'c': // # of computation operated between each IO
             option->bogus_comp = strtol(optarg, NULL, 10);
+            break;
+        case 'i': // call usleep(3) for each I/O submission
+            option->iosleep = strtol(optarg, NULL, 10);
             break;
         case 'C': // ontinue on error
             option->continue_on_error = true;
@@ -811,6 +817,9 @@ do_async_io(th_arg_t *arg, int *fd_list)
             for(idx = 0; idx < option.bogus_comp; idx++){
                 dummy += idx;
             }
+            if (option.iosleep > 0) {
+                usleep(option.iosleep);
+            }
         }
     }
 
@@ -920,6 +929,9 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
                 for(idx = 0; idx < option.bogus_comp; idx++){
                     dummy += idx;
                 }
+                if (option.iosleep > 0) {
+                    usleep(option.iosleep);
+                }
             }
         }
     } else if (option.pattern == PATTERN_SEQ) {
@@ -960,6 +972,9 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
                 volatile double dummy = 0.0;
                 for(idx = 0; idx < option.bogus_comp; idx++){
                     dummy += idx;
+                }
+                if (option.iosleep > 0) {
+                    usleep(option.iosleep);
                 }
             }
         }
@@ -1018,6 +1033,9 @@ do_sync_io(th_arg_t *th_arg, int *fd_list)
                 volatile double dummy = 0.0;
                 for(idx = 0; idx < option.bogus_comp; idx++){
                     dummy += idx;
+                }
+                if (option.iosleep > 0) {
+                    usleep(option.iosleep);
                 }
             }
         }

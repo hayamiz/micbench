@@ -444,6 +444,10 @@ class IoCommand < BaseCommand
                "# of bogus computation to be operated between each IO (default: 0)") do |num|
       @options[:bogus_comp] = num.to_i
     end
+    @parser.on('-i', '--iosleep USEC',
+               "Call usleep(3) for each I/O submission") do |usec|
+      @options[:iosleep] = usec.to_i
+    end
     @parser.on('-d', '--direct',
               "Use O_DIRECT (default: no). If this flag is specified, block size must be multiples of block size of devices.") do
       @options[:direct] = true
@@ -525,6 +529,7 @@ class IoCommand < BaseCommand
     @options[:mode] = :read
     @options[:pattern] = :seq
     @options[:bogus_comp] = 0
+    @options[:iosleep] = 0
     @options[:direct] = false
     @options[:async] = false
     @options[:aio_nr_events] = 64
@@ -613,6 +618,7 @@ class IoCommand < BaseCommand
                          else; "-S"; # sequential
                          end),
                         "-c", @options[:bogus_comp],
+                        "-i", @options[:iosleep],
                         (@options[:direct] ? "-d" : []),
                         (@options[:async] ? "-A" : []),
                         "-E", @options[:aio_nr_events],
