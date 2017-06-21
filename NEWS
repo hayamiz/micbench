@@ -1,6 +1,15 @@
  NEWS of micbench
 ==================
 
+## XXXX-XX-XX: micbench 0.2.0 released
+
+  * New Feature
+    * [io] subcommand
+      * Multiple I/O target devices can be specified
+      * Added JSON output mode (--json option)
+  * Bug fixes
+    * ...
+
 ## 2011-12-09: micbench 0.1.0 released
 
   * The first release of micbench
