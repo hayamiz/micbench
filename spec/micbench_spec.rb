@@ -6,30 +6,30 @@ describe BaseCommand do
   describe "'class methods'" do
     describe "'commands'" do
       it "should respond to :commands" do
-        BaseCommand.should respond_to(:commands)
+        expect(BaseCommand).to respond_to(:commands)
       end
 
       it "should return empty Hash" do
-        BaseCommand.commands.is_a?(Hash).should be_true
+        expect(BaseCommand.commands).to be_a(Hash)
       end
 
     end
 
     describe "'command_name'" do
       it "should respond_to :command_name" do
-        BaseCommand.should respond_to(:command_name)
+        expect(BaseCommand).to respond_to(:command_name)
       end
 
       describe "adding custom Command" do
         it "should register a new Command to commands" do
-          BaseCommand.commands.should_not include('hoge')
+          expect(BaseCommand.commands).not_to include('hoge')
           class HogeCommand < BaseCommand
             command_name "hoge", "test command"
           end
-          BaseCommand.commands.should include('hoge')
-          BaseCommand.commands['hoge'].should == HogeCommand
+          expect(BaseCommand.commands).to include('hoge')
+          expect(BaseCommand.commands['hoge']).to eq(HogeCommand)
           BaseCommand.commands.delete('hoge')
-          BaseCommand.commands.should_not include('hoge')
+          expect(BaseCommand.commands).not_to include('hoge')
         end
       end
     end
@@ -42,11 +42,11 @@ describe BaseCommand do
       end
 
       it "should respond to :description" do
-        BaseCommand.should respond_to(:description)
+        expect(BaseCommand).to respond_to(:description)
       end
 
       it "should have the right desc" do
-        TestCommand.description.should == "test command"
+        expect(TestCommand.description).to eq("test command")
       end
 
       after(:each) do

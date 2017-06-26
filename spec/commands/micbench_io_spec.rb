@@ -4,19 +4,19 @@ require 'spec_helper'
 
 describe IoCommand do
   it "should respond to :command_name" do
-    IoCommand.should respond_to(:command_name)
+    expect(IoCommand).to respond_to(:command_name)
   end
 
   it "should return the right name" do
-    IoCommand.command_name.should == "io"
+    expect(IoCommand.command_name).to eq("io")
   end
 
   it "should respond to :description" do
-    IoCommand.should respond_to(:description)
+    expect(IoCommand).to respond_to(:description)
   end
 
   it "should return the right desc" do
-    IoCommand.description.should =~ /io benchmark/i
+    expect(IoCommand.description).to match(/io benchmark/i)
   end
 
   describe "option parser" do
@@ -27,86 +27,83 @@ describe IoCommand do
     end
 
     it "should have the right banner" do
-      @parser.banner.should =~ /\bio\b/
+      expect(@parser.banner).to match(/\bio\b/)
     end
 
     it "should return right default options" do
       @iocommand.parse_args([])
-      @options[:noop].should be_false
-      @options[:multi].should == 1
-      @options[:affinity].should == []
-      @options[:timeout].should == 60
-      @options[:mode].should == :read
-      @options[:rwmix].should == 0.0
-      @options[:pattern].should == :seq
-      @options[:bogus_comp].should == 0
-      @options[:direct].should == false
-      @options[:async].should == false
-      @options[:aio_nr_events].should == 64
-      @options[:blocksize].should == 16*1024
-      @options[:offset_start].should == nil
-      @options[:offset_end].should == nil
-      @options[:misalign].should == 0
-      @options[:verbose].should == false
-      @options[:debug].should == false
-      @options[:json].should == false
+      expect(@options[:noop]).to be_falsey
+      expect(@options[:multi]).to eq(1)
+      expect(@options[:affinity]).to eq([])
+      expect(@options[:timeout]).to eq(60)
+      expect(@options[:mode]).to eq(:read)
+      expect(@options[:rwmix]).to eq(0.0)
+      expect(@options[:pattern]).to eq(:seq)
+      expect(@options[:bogus_comp]).to eq(0)
+      expect(@options[:direct]).to eq(false)
+      expect(@options[:async]).to eq(false)
+      expect(@options[:aio_nr_events]).to eq(64)
+      expect(@options[:blocksize]).to eq(16*1024)
+      expect(@options[:offset_start]).to eq(nil)
+      expect(@options[:offset_end]).to eq(nil)
+      expect(@options[:misalign]).to eq(0)
+      expect(@options[:verbose]).to eq(false)
+      expect(@options[:debug]).to eq(false)
+      expect(@options[:json]).to eq(false)
       # @options[].should
     end
 
     it "should parse noop option" do
       @iocommand.parse_args(%w|-n|)
-      @options[:noop].should be_true
+      expect(@options[:noop]).to be_truthy
       @iocommand.parse_args(%w|--noop|)
-      @options[:noop].should be_true
+      expect(@options[:noop]).to be_truthy
       @iocommand.parse_args([])
-      @options[:noop].should be_false
+      expect(@options[:noop]).to be_falsey
     end
 
     it "should parse --multi option" do
       @iocommand.parse_args(%w|-m 4|)
-      @options[:multi].should == 4
+      expect(@options[:multi]).to eq(4)
       @iocommand.parse_args(%w|--multi 8|)
-      @options[:multi].should == 8
+      expect(@options[:multi]).to eq(8)
     end
 
     it "should parse --affinity option" do
       @iocommand.parse_args(%w|-a 0:c0|)
-      @options[:affinity].is_a?(Array).should be_true
-      @options[:affinity].size.should == 1
+      expect(@options[:affinity]).to be_a(Array)
+      expect(@options[:affinity].size).to eq(1)
 
       @iocommand.parse_args(%w|--affinity 0:c0|)
-      @options[:affinity].is_a?(Array).should be_true
-      @options[:affinity].size.should == 1
+      expect(@options[:affinity]).to be_a(Array)
+      expect(@options[:affinity].size).to eq(1)
     end
 
     it "should parse --timeout option" do
       @iocommand.parse_args(%w|-t 10|)
-      @options[:timeout].should == 10
+      expect(@options[:timeout]).to eq(10)
 
       @iocommand.parse_args(%w|--timeout 20|)
-      @options[:timeout].should == 20
+      expect(@options[:timeout]).to eq(20)
     end
 
     it "should parse mode option" do
       @iocommand.parse_args(%w|--write|)
-      @options[:mode].should == :write
+      expect(@options[:mode]).to eq(:write)
 
       @iocommand.parse_args(%w|-M 0.1|)
-      @options[:mode].should == :rwmix
-      @options[:rwmix].should == 0.1
+expect(@options[:mode]).to eq(:rwmix)
+expect(@options[:rwmix]).to eq(0.1)
 
       @iocommand.parse_args(%w|--rwmix 0.5|)
-      @options[:mode].should == :rwmix
-      @options[:rwmix].should == 0.5
+expect(@options[:mode]).to eq(:rwmix)
+expect(@options[:rwmix]).to eq(0.5)
     end
 
     it "should parse --json option" do
       @iocommand.parse_args(%w|--json|)
-      @options[:json].should == true
+expect(@options[:json]).to eq(true)
     end
 
-    it "should parse more options" do
-      pending "TODO"
-    end
   end
 end
