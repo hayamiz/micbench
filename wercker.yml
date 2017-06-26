@@ -7,7 +7,7 @@ build:
     # http://devcenter.wercker.com/articles/languages/ruby.html
     steps:
         - script:
-            name: install packages
+            name: install numactl
             code: |
               apt-get install -y numactl
         - script:
