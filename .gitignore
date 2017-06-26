@@ -35,3 +35,4 @@ Makefile
 /micbench-*.tar.gz
 *.gcda
 *.gcno
+/.wercker/
