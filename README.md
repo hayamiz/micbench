@@ -1,6 +1,8 @@
  micbench: a benchmarking toolset
 ==================================
 
+[![wercker status](https://app.wercker.com/status/b1d3b6d0ce4102f7e637c28746eeaa0e/s/master "wercker status")](https://app.wercker.com/project/byKey/b1d3b6d0ce4102f7e637c28746eeaa0e)
+
 "micbench" is a set of programs for measuring basic performance of your machines.
 
   * micbench-io  : I/O performance
