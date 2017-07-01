@@ -4,8 +4,8 @@ require 'optparse'
 
 ENV['MICBENCH'] = "yes"
 
-$procs = `cat /sys/devices/system/cpu/cpu*/topology/physical_package_id|sort|uniq|wc -l`.to_i
-$logicores = `grep 'processor' /proc/cpuinfo|sort|uniq|wc -l`.to_i
+$procs = `nproc`.to_i
+$logicores = `nproc`.to_i
 $physcores_per_proc = `grep 'core id' /proc/cpuinfo|sort|uniq|wc -l`.to_i
 $logicores_per_proc = $logicores / $procs
 $nodes = `numactl --hardware|grep available`.split[1].to_i
