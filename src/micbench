@@ -539,7 +539,7 @@ class IoCommand < BaseCommand
     @options[:offset_end] = nil
     @options[:misalign] = 0
     @options[:continue_on_error] = false
-    @options[:json] = false
+    @options[:json] = true
     @options[:verbose] = false
     @options[:debug] = false
     @options[:rwmix] = 0.0

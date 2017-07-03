@@ -7,6 +7,9 @@
     * [io] subcommand
       * Multiple I/O target devices can be specified
       * Added JSON output mode (--json option)
+  * Changes
+    * [io] subcommand
+      * Enable JSON output by default
   * Bug fixes
     * ...
 
