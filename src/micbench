@@ -403,10 +403,6 @@ class IoCommand < BaseCommand
               "The number of IO threads (default: 1)") do |num|
       @options[:multi] = num
     end
-    @parser.on('-a', '--affinity AFFINITY',
-              "CPU and memory affinity setting") do |affinity|
-      @options[:affinity] = @options[:affinity].merge(parse_affinity(affinity))
-    end
     @parser.on('-t', '--timeout NUM',
               "Running time of IO test (in sec) (default: 60sec)") do |num|
       if num =~ /\A\d+\Z/
@@ -431,6 +427,36 @@ class IoCommand < BaseCommand
     @parser.on('-R', '--rand',
               "Random access mode (default: sequential access mode)") do
       @options[:pattern] = :rand
+    end
+    @parser.on('-b', '--blocksize SIZE',
+              "Size of IO block (default: 16KB)") do |size|
+      unless @options[:blocksize] = parse_size(size)
+        parse_error.call("invalid argument for --blocksize: #{size}")
+      end
+    end
+    @parser.on('-s', '--offset-start OFFSET',
+              "Offset (in blocks) to start with (default: 0)") do |offset|
+      if offset =~ /\A\d+\Z/
+        @options[:offset_start] = offset.to_i
+      else
+        @options[:offset_start_byte] = parse_size(offset)
+      end
+    end
+    @parser.on('-e', '--offset-end OFFSET',
+              "Offset (in blocks) to end with (default: the size of device)") do |offset|
+      if offset =~ /\A\d+\Z/
+        @options[:offset_end] = offset.to_i
+      else
+        @options[:offset_end_byte] = parse_size(offset)
+      end
+    end
+    @parser.on('-B', '--seekdist-stride SIZE',
+               "Size of seekdist stride (in blocks) (default: )") do |size|
+      if size =~ /\A\d+\Z/
+        @options[:seekdist_stride] = size.to_i
+      else
+        @options[:seekdist_stride_byte] = parse_size(size)
+      end
     end
     @parser.on('--seekdist',
                "Constant seek distance mode") do
@@ -464,35 +490,9 @@ class IoCommand < BaseCommand
                "Path to an AIO event trace log file.") do |file|
       @options[:aio_tracefile] = file
     end
-    @parser.on('-b', '--blocksize SIZE',
-              "Size of IO block (default: 16KB)") do |size|
-      unless @options[:blocksize] = parse_size(size)
-        parse_error.call("invalid argument for --blocksize: #{size}")
-      end
-    end
-    @parser.on('-s', '--offset-start OFFSET',
-              "Offset (in blocks) to start with (default: 0)") do |offset|
-      if offset =~ /\A\d+\Z/
-        @options[:offset_start] = offset.to_i
-      else
-        @options[:offset_start_byte] = parse_size(offset)
-      end
-    end
-    @parser.on('-e', '--offset-end OFFSET',
-              "Offset (in blocks) to end with (default: the size of device)") do |offset|
-      if offset =~ /\A\d+\Z/
-        @options[:offset_end] = offset.to_i
-      else
-        @options[:offset_end_byte] = parse_size(offset)
-      end
-    end
-    @parser.on('-B', '--seekdist-stride SIZE',
-               "Size of seekdist stride (in blocks) (default: )") do |size|
-      if size =~ /\A\d+\Z/
-        @options[:seekdist_stride] = size.to_i
-      else
-        @options[:seekdist_stride_byte] = parse_size(size)
-      end
+    @parser.on('-a', '--affinity AFFINITY',
+              "CPU and memory affinity setting") do |affinity|
+      @options[:affinity] = @options[:affinity].merge(parse_affinity(affinity))
     end
     @parser.on('-l', '--logfile PATH',
                "Log file path where each I/O activity is recorded.") do |path|
