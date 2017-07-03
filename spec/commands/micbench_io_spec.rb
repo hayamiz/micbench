@@ -49,7 +49,7 @@ describe IoCommand do
       expect(@options[:misalign]).to eq(0)
       expect(@options[:verbose]).to eq(false)
       expect(@options[:debug]).to eq(false)
-      expect(@options[:json]).to eq(false)
+      expect(@options[:json]).to eq(true)
       # @options[].should
     end
 
