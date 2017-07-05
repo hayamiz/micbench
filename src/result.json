@@ -1,0 +1,27 @@
+{
+  "params": {
+    "threads": 1,
+    "mode": "read",
+    "pattern": "random",
+    "blocksize": 8096,		# I/O block size in bytes
+    "offset_start": -1,	# start position in blocks, -1 if not specified
+    "offset_end": -1,		# end position in blocks, -1 if not specified
+    "direct": true,		# O_DIRECT is specified or not
+    "aio": true,		# libaio is used or not.
+      "timeout": 10,		# in seconds
+    "bogus_comp": 100,		# number of bogus float operations between every I/O
+    "iosleep": 0		# sleep time between every I/O in microseconds
+  },
+  "counters": {
+    "io_count": 123,
+    "io_byte": 123445
+  },
+  "metrics": {
+    "exec_time": 10.0,		# in seconds
+    "iops": 1.0,
+    "avg_blocksize": 8096,	# in bytes
+    "transfer_rate": 1.0,	# in MB/s
+    "response_time": 1.0,	# in milliseconds
+    "accum_io_time": 1.0	# in seconds
+  }
+}
