@@ -356,31 +356,34 @@ print_option()
         break;
     }
 
-    fprintf(stderr, "== configuration summary ==\n\
-multiplicity    %d\n\
-access_pattern  %s\n\
-access_mode     %s\n\
-direct_io       %s\n\
-timeout         %d\n\
-bogus_comp      %ld\n\
-iosleep         %d\n\
-block_size      %d\n\
-offset_start    %ld\n\
-offset_end      %ld\n\
-misalign        %ld\n\
-",
-            option.multi,
-            pattern_str,
-            (option.read ? "read" :
-             option.write ? "write" : "mix"),
-            (option.direct ? "yes" : "no"),
-            option.timeout,
-            option.bogus_comp,
-            option.iosleep,
-            option.blk_sz,
-            option.ofst_start,
-            option.ofst_end,
-            option.misalign);
+    printf("{\n\
+  \"params\": {\n\
+    \"threads\": %d,\n\
+    \"mode\": \"%s\",\n\
+    \"pattern\": \"%s\",\n\
+    \"blocksize_byte\": %d,\n\
+    \"offset_start_blk\": %ld,\n\
+    \"offset_end_blk\": %ld,\n\
+    \"direct\": %s,\n\
+    \"aio\": %s,\n\
+    \"timeout_sec\": %d,\n\
+    \"bogus_comp\": %ld,\n\
+    \"iosleep\": %d\n\
+  }\n\
+}\n",
+           option.multi,
+           (option.read ? "read" :
+            option.write ? "write" : "mix"),
+           pattern_str,
+           option.blk_sz,
+           option.ofst_start,
+           option.ofst_end,
+           (option.direct ? "true" : "false"),
+           (option.aio ? "true" : "false"),
+           option.timeout,
+           option.bogus_comp,
+           option.iosleep
+        );
 }
 
 void
@@ -1078,10 +1081,10 @@ thread_handler(void *arg)
     }
 
     if (option.aio == true) {
-        if (option.verbose) fprintf(stderr, "do_async_io\n");
+        if (option.verbose) fprintf(stderr, "*info* do_async_io\n");
         do_async_io(th_arg, fd_list);
     } else {
-        if (option.verbose) fprintf(stderr, "do_sync_io\n");
+        if (option.verbose) fprintf(stderr, "*info* do_sync_io\n");
         do_sync_io(th_arg, fd_list);
     }
 
@@ -1123,9 +1126,6 @@ micbench_io_main(int argc, char **argv)
         print_option();
         exit(EXIT_SUCCESS);
     }
-    if (option.verbose){
-        print_option();
-    }
 
     th_args = malloc(sizeof(th_arg_t) * option.multi);
 
@@ -1149,7 +1149,10 @@ micbench_io_main(int argc, char **argv)
         perror("Failed to open /dev/urandom.\n");
         exit(EXIT_FAILURE);
     }
-    fread(&common_seed, sizeof(common_seed), 1, f);
+    if (fread(&common_seed, sizeof(common_seed), 1, f) == 0) {
+        perror("fread failed to read /dev/urandom.\n");
+        exit(EXIT_FAILURE);
+    }
     fclose(f);
 
     if (option.aio_tracefile != NULL) {
