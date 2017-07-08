@@ -8,9 +8,9 @@ else
   ::Dir.glob(::File.expand_path('../support/**/*.rb', __FILE__)).each { |f| require_relative f }
 end
 
-load(File.expand_path(File.join('..', 'src', 'micbench'), __dir__))
+load(File.expand_path(File.join('..', '..', 'src', 'micbench'), __FILE__))
 
 def micbench_bin
-  File.expand_path("../src/micbench", __dir__)
+  File.expand_path("../../src/micbench", __FILE__)
 end
 
