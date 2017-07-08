@@ -10,6 +10,7 @@
   * Changes
     * [io] subcommand
       * Enable JSON output by default
+      * Set default block size to 4KB
   * Bug fixes
     * ...
 

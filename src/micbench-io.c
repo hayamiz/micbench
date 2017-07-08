@@ -436,7 +436,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->aio = false;
     option->aio_nr_events = 64;
     option->aio_tracefile = NULL;
-    option->blk_sz = 64 * KIBI;
+    option->blk_sz = 4 * KIBI;
     option->seekdist_stride = 16 * 1024;
     option->ofst_start = -1;
     option->ofst_end = -1;

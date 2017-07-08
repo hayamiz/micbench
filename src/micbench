@@ -429,7 +429,7 @@ class IoCommand < BaseCommand
       @options[:pattern] = :rand
     end
     @parser.on('-b', '--blocksize SIZE',
-              "Size of IO block (default: 16KB)") do |size|
+              "Size of IO block (default: 4KB)") do |size|
       unless @options[:blocksize] = parse_size(size)
         parse_error.call("invalid argument for --blocksize: #{size}")
       end
@@ -534,7 +534,7 @@ class IoCommand < BaseCommand
     @options[:async] = false
     @options[:aio_nr_events] = 64
     @options[:aio_tracefile] = nil
-    @options[:blocksize] = 16 * 1024
+    @options[:blocksize] = 4 * 1024
     @options[:offset_start] = nil
     @options[:offset_end] = nil
     @options[:misalign] = 0
