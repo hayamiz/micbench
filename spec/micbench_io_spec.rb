@@ -1,7 +1,7 @@
 # encoding: utf-8
 
 require 'spec_helper'
-
+=begin
 describe IoCommand do
   it "should respond to :command_name" do
     expect(IoCommand).to respond_to(:command_name)
@@ -105,5 +105,42 @@ expect(@options[:rwmix]).to eq(0.5)
 expect(@options[:json]).to eq(true)
     end
 
+  end
+end
+=end
+
+describe "io subcommand" do
+  before(:all) do
+    @test_file = `mktemp`.strip
+    system("dd if=/dev/zero of=#{@test_file} bs=32MB count=1")
+  end
+
+  describe "JSON output format check: with --noop option" do
+    before(:each) do
+      run("#{micbench_bin} io --noop #{@test_file}")
+    end
+
+    it do
+      expect(last_command_started).to be_successfully_executed
+
+      expected_json = <<EOS
+{
+  "params": {
+    "threads": 1,
+    "mode": "read",
+    "pattern": "sequential",
+    "blocksize_byte": 4096,
+    "offset_start_blk": -1,
+    "offset_end_blk": -1,
+    "direct": false,
+    "aio": false,
+    "timeout_sec": 60,
+    "bogus_comp": 0,
+    "iosleep": 0
+  }
+}
+EOS
+      expect(last_command_started.stdout.to_s).to eq(expected_json)
+    end
   end
 end
