@@ -114,6 +114,10 @@ describe "io subcommand" do
     system("dd if=/dev/zero of=#{@test_file} bs=32MB count=1")
   end
 
+  after(:all) do
+    FileUtils.rm(@test_file)
+  end
+
   describe "JSON output format check: with --noop option" do
     before(:each) do
       run("#{micbench_bin} io --noop #{@test_file}")
