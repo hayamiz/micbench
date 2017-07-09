@@ -1,7 +1,7 @@
 # encoding: utf-8
 
 require 'spec_helper'
-=begin
+
 describe IoCommand do
   it "should respond to :command_name" do
     expect(IoCommand).to respond_to(:command_name)
@@ -43,7 +43,7 @@ describe IoCommand do
       expect(@options[:direct]).to eq(false)
       expect(@options[:async]).to eq(false)
       expect(@options[:aio_nr_events]).to eq(64)
-      expect(@options[:blocksize]).to eq(16*1024)
+      expect(@options[:blocksize]).to eq(4*1024)
       expect(@options[:offset_start]).to eq(nil)
       expect(@options[:offset_end]).to eq(nil)
       expect(@options[:misalign]).to eq(0)
@@ -107,7 +107,6 @@ expect(@options[:json]).to eq(true)
 
   end
 end
-=end
 
 describe "io subcommand" do
   before(:all) do
