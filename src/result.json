@@ -14,12 +14,11 @@
   },
   "counters": {
     "io_count": 123,
-    "io_byte": 123445
+    "io_bytes": 123445
   },
   "metrics": {
     "exec_time_sec": 10.0,
     "iops": 1.0,
-    "avg_blocksize_byte": 8096,
     "transfer_rate_mbps": 1.0,
     "response_time_msec": 1.0,
     "accum_io_time_sec": 1.0

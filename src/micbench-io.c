@@ -24,6 +24,9 @@ typedef struct {
 } meter_t;
 
 typedef struct {
+    long io_count;
+    long io_bytes;
+
     double exec_time;
     double iowait_time;
     int64_t count;
@@ -406,13 +409,72 @@ accum_io_time %lf [sec]\n\
 void
 print_result_json(result_t *result)
 {
-    printf("{\"exec_time\":%lf,\"iops\":%lf,\"response_time\":%lf,"
-           "\"transfer_rate\":%lf,\"accum_io_time\":%lf}\n",
+    const char *pattern_str;
+
+    switch(option.pattern) {
+    case PATTERN_SEQ:
+        pattern_str = "sequential";
+        break;
+    case PATTERN_RAND:
+        pattern_str = "random";
+        break;
+    case PATTERN_SEEKDIST:
+        pattern_str = "seekdist";
+        break;
+    case PATTERN_SEEKINCR:
+        pattern_str = "seekincr";
+        break;
+    default:
+        pattern_str = "(unknown)";
+        break;
+    }
+
+    printf("{\n\
+  \"params\": {\n\
+    \"threads\": %d,\n\
+    \"mode\": \"%s\",\n\
+    \"pattern\": \"%s\",\n\
+    \"blocksize_byte\": %d,\n\
+    \"offset_start_blk\": %ld,\n\
+    \"offset_end_blk\": %ld,\n\
+    \"direct\": %s,\n\
+    \"aio\": %s,\n\
+    \"timeout_sec\": %d,\n\
+    \"bogus_comp\": %ld,\n\
+    \"iosleep\": %d\n\
+  },\n\
+  \"counters\": {\n\
+    \"io_count\": %ld,\n\
+    \"io_bytes\": %ld\n\
+  },\n\
+  \"metrics\": {\n\
+    \"exec_time_sec\": %lf,\n\
+    \"iops\": %lf,\n\
+    \"transfer_rate_mbps\": %lf,\n\
+    \"response_time_msec\": %lf,\n\
+    \"accum_io_time_sec\": %lf\n\
+  }\n\
+}\n",
+           option.multi,
+           (option.read ? "read" :
+            option.write ? "write" : "mix"),
+           pattern_str,
+           option.blk_sz,
+           option.ofst_start,
+           option.ofst_end,
+           (option.direct ? "true" : "false"),
+           (option.aio ? "true" : "false"),
+           option.timeout,
+           option.bogus_comp,
+           option.iosleep,
+           result->io_count,
+           result->io_bytes,
            result->exec_time,
            result->iops,
            result->response_time,
            result->bandwidth / MEBI,
-           result->iowait_time);
+           result->iowait_time
+        );
 }
 
 int
@@ -1182,11 +1244,17 @@ micbench_io_main(int argc, char **argv)
 
     int64_t count_sum = 0;
     double iowait_time_sum = 0;
+    result.io_count = 0;
+    result.io_bytes = 0;
+
     for(i = 0;i < option.multi;i++){
         meter = th_args[i].meter;
         count_sum += meter->count;
         iowait_time_sum += meter->iowait_time;
     }
+
+    result.io_count = count_sum;
+    result.io_bytes = count_sum * option.blk_sz;
 
     result.exec_time = exec_time;
     result.iowait_time = iowait_time_sum / option.multi;

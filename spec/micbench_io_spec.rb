@@ -143,4 +143,44 @@ EOS
       expect(last_command_started.stdout.to_s).to eq(expected_json)
     end
   end
+
+  describe "JSON output format check: with actual run" do
+    before(:each) do
+      run("#{micbench_bin} io -t 1 #{@test_file}")
+    end
+
+    it do
+      expect(last_command_started).to be_successfully_executed
+
+      expected_json_regexp = Regexp.compile(<<EOS)
+{
+  "params": {
+    "threads": 1,
+    "mode": "read",
+    "pattern": "sequential",
+    "blocksize_byte": 4096,
+    "offset_start_blk": -1,
+    "offset_end_blk": -1,
+    "direct": false,
+    "aio": false,
+    "timeout_sec": 1,
+    "bogus_comp": 0,
+    "iosleep": 0
+  },
+  "counters": {
+    "io_count": \\d+,
+    "io_bytes": \\d+
+  },
+  "metrics": {
+    "exec_time_sec": \\d+\\.\\d+,
+    "iops": \\d+\\.\\d+,
+    "transfer_rate_mbps": \\d+\\.\\d+,
+    "response_time_msec": \\d+\\.\\d+,
+    "accum_io_time_sec": \\d+\\.\\d+
+  }
+}
+EOS
+      expect(last_command_started.stdout.to_s).to match(expected_json_regexp)
+    end
+  end
 end
