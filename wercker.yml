@@ -9,13 +9,19 @@ build:
         - script:
             name: install numactl
             code: |
-              apt-get install -y numactl
+              apt-get install -y numactl libnuma-dev libaio-dev libglib2.0-dev
         - script:
             name: switch ruby to 1.9.3
             code: |
               source /etc/profile.d/rvm.sh
               rvm use 1.9.3
+
         - bundle-install
+        - script:
+            name: build core execs
+            code: |
+              bundle exec rake build_core
+
         - script:
             name: run rspec
             code: |

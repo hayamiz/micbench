@@ -64,8 +64,8 @@ bin_PROGRAMS += micbench-btreplay
 
 micbench_btreplay_SOURCES = micbench-btreplay-main.c $(micbench_headers)
 micbench_btreplay_LDADD = libmicbench-btreplay.la libmicbench-utils.la
-micbench_btreplay_LDFLAGS = -pthread $(GLIB_LIBS)
 libmicbench_btreplay_la_SOURCES = micbench-btreplay.c
+libmicbench_btreplay_la_LDFLAGS = -pthread $(GLIB_LIBS)
 endif
 endif
 
