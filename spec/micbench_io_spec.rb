@@ -137,9 +137,11 @@ describe "io subcommand" do
     "offset_end_blk": -1,
     "direct": false,
     "aio": false,
+    "aio_nr_events": 64,
     "timeout_sec": 60,
     "bogus_comp": 0,
-    "iosleep": 0
+    "iosleep": 0,
+    "files": ["#{@test_file}"]
   }
 }
 EOS
