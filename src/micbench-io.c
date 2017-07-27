@@ -439,6 +439,7 @@ print_result_json(result_t *result)
     \"offset_end_blk\": %ld,\n\
     \"direct\": %s,\n\
     \"aio\": %s,\n\
+    \"aio_nr_events\": %d,\n\
     \"timeout_sec\": %d,\n\
     \"bogus_comp\": %ld,\n\
     \"iosleep\": %d\n\
@@ -464,6 +465,7 @@ print_result_json(result_t *result)
            option.ofst_end,
            (option.direct ? "true" : "false"),
            (option.aio ? "true" : "false"),
+           option.aio_nr_events,
            option.timeout,
            option.bogus_comp,
            option.iosleep,
