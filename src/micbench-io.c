@@ -407,7 +407,7 @@ accum_io_time %lf [sec]\n\
 }
 
 void
-print_result_json(result_t *result)
+print_result_json(result_t *result, bool only_params)
 {
     const char *pattern_str;
     char *files_str;
@@ -478,19 +478,7 @@ print_result_json(result_t *result)
     \"bogus_comp\": %ld,\n\
     \"iosleep\": %d,\n\
     \"files\": %s\n\
-  },\n\
-  \"counters\": {\n\
-    \"io_count\": %ld,\n\
-    \"io_bytes\": %ld\n\
-  },\n\
-  \"metrics\": {\n\
-    \"exec_time_sec\": %lf,\n\
-    \"iops\": %lf,\n\
-    \"transfer_rate_mbps\": %lf,\n\
-    \"response_time_msec\": %lf,\n\
-    \"accum_io_time_sec\": %lf\n\
-  }\n\
-}\n",
+  }",
            option.multi,
            (option.read ? "read" :
             option.write ? "write" : "mix"),
@@ -504,7 +492,25 @@ print_result_json(result_t *result)
            option.timeout,
            option.bogus_comp,
            option.iosleep,
-           files_str,
+           files_str
+        );
+
+    if (only_params == true) {
+        printf("\n}\n");
+    } else {
+        printf(",\n\
+  \"counters\": {\n\
+    \"io_count\": %ld,\n\
+    \"io_bytes\": %ld\n\
+  },\n\
+  \"metrics\": {\n\
+    \"exec_time_sec\": %lf,\n\
+    \"iops\": %lf,\n\
+    \"transfer_rate_mbps\": %lf,\n\
+    \"response_time_msec\": %lf,\n\
+    \"accum_io_time_sec\": %lf\n\
+  }\n\
+}\n",
            result->io_count,
            result->io_bytes,
            result->exec_time,
@@ -513,6 +519,7 @@ print_result_json(result_t *result)
            result->bandwidth / MEBI,
            result->iowait_time
         );
+    }
 }
 
 int
@@ -1223,7 +1230,7 @@ micbench_io_main(int argc, char **argv)
     }
 
     if (option.noop == true){
-        print_option();
+        print_result_json(NULL, true);
         exit(EXIT_SUCCESS);
     }
 
@@ -1301,7 +1308,7 @@ micbench_io_main(int argc, char **argv)
     result.bandwidth = count_sum * option.blk_sz / result.exec_time;
 
     if (option.json) {
-        print_result_json(&result);
+        print_result_json(&result, false);
     } else {
         print_result(&result);
     }
