@@ -155,7 +155,7 @@ thread_job_spinlock(th_arg_t *arg)
     volatile double x;
 
     x = 0.1;
-    asm("# thread job start");
+    __asm__("# thread job start");
     for(i = 0; i < option.count; i++){
         pthread_spin_lock(arg->slock);
         for(j = 0; j < option.critical_job_size; j++){
@@ -172,7 +172,7 @@ thread_job_spinlock(th_arg_t *arg)
                 x += 0.3;
         }
     }
-    asm("# thread job end");
+    __asm__("# thread job end");
     arg->pc.ops = option.count;
 }
 
@@ -184,7 +184,7 @@ thread_job_mutex(th_arg_t *arg)
     volatile double x;
 
     x = 0.1;
-    asm("# thread job mutex start");
+    __asm__("# thread job mutex start");
     for(i = 0; i < option.count; i++){
         pthread_mutex_lock(arg->mutex);
         for(j = 0; j < option.critical_job_size; j++){
@@ -201,7 +201,7 @@ thread_job_mutex(th_arg_t *arg)
                 x += 0.3;
         }
     }
-    asm("# thread job mutex end");
+    __asm__("# thread job mutex end");
     arg->pc.ops = option.count;
 }
 
@@ -212,7 +212,7 @@ thread_job_mfence(th_arg_t *arg)
     volatile double x;
 
     x = 0.1;
-    asm("# thread job mfence start");
+    __asm__("# thread job mfence start");
     for(i = 0; i < option.count; i++){
         __asm__ volatile(
 #include "micbench-lock-mfence-inner.c"
@@ -221,7 +221,7 @@ thread_job_mfence(th_arg_t *arg)
             );
 
     }
-    asm("# thread job mfence end");
+    __asm__("# thread job mfence end");
     arg->pc.ops = option.count * 128;
 }
 

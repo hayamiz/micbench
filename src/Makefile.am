@@ -1,5 +1,5 @@
 
-AM_CFLAGS = -g -Wall -msse -msse2
+AM_CFLAGS = -g -Wall -msse -msse2 -std=c99
 LDFLAGS = -no-undefined
 INCLUDES = 
 
