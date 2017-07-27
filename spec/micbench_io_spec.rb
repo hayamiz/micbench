@@ -169,7 +169,8 @@ EOS
     "aio_nr_events": 64,
     "timeout_sec": 1,
     "bogus_comp": 0,
-    "iosleep": 0
+    "iosleep": 0,
+    "files": \\["#{Regexp.quote(@test_file)}"\\]
   },
   "counters": {
     "io_count": \\d+,

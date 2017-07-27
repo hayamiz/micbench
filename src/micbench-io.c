@@ -410,6 +410,9 @@ void
 print_result_json(result_t *result)
 {
     const char *pattern_str;
+    char *files_str;
+    char *files_str_ptr;
+    size_t files_str_len;
 
     switch(option.pattern) {
     case PATTERN_SEQ:
@@ -429,6 +432,37 @@ print_result_json(result_t *result)
         break;
     }
 
+    files_str_len = 4;
+    if (NULL == (files_str = malloc(files_str_len))) {
+        perror("malloc failed.");
+        exit(EXIT_FAILURE);
+    }
+    files_str[0] = '[';
+    files_str_ptr = files_str + 1;
+    for (int i = 0; i < option.nr_files; i++) {
+        int n;
+        if (i == 0) {
+            n = snprintf(files_str_ptr, files_str_len - 2 - (files_str_ptr - files_str),
+                         "\"%s\"", option.file_path_list[i]);
+        } else {
+            n = snprintf(files_str_ptr, files_str_len - 2 - (files_str_ptr - files_str),
+                         ", \"%s\"", option.file_path_list[i]);
+        }
+        if (n >= files_str_len - 2 - (files_str_ptr - files_str)) {
+            size_t ofst = files_str_ptr - files_str;
+
+            files_str_len *= 2;
+            files_str = realloc(files_str, files_str_len);
+            files_str_ptr = files_str + ofst;
+            i--;
+            continue;
+        } else {
+            files_str_ptr += n;
+        }
+    }
+    *files_str_ptr = ']';
+    *(files_str_ptr + 1) = '\0';
+
     printf("{\n\
   \"params\": {\n\
     \"threads\": %d,\n\
@@ -442,7 +476,8 @@ print_result_json(result_t *result)
     \"aio_nr_events\": %d,\n\
     \"timeout_sec\": %d,\n\
     \"bogus_comp\": %ld,\n\
-    \"iosleep\": %d\n\
+    \"iosleep\": %d,\n\
+    \"files\": %s\n\
   },\n\
   \"counters\": {\n\
     \"io_count\": %ld,\n\
@@ -469,6 +504,7 @@ print_result_json(result_t *result)
            option.timeout,
            option.bogus_comp,
            option.iosleep,
+           files_str,
            result->io_count,
            result->io_bytes,
            result->exec_time,
