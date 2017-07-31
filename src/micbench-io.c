@@ -515,8 +515,8 @@ print_result_json(result_t *result, bool only_params)
            result->io_bytes,
            result->exec_time,
            result->iops,
-           result->response_time,
            result->bandwidth / MEBI,
+           result->response_time,
            result->iowait_time
         );
     }
