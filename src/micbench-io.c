@@ -27,12 +27,12 @@ typedef struct {
     long io_count;
     long io_bytes;
 
-    double exec_time;
-    double iowait_time;
+    double exec_time;           /* in second */
+    double iowait_time;         /* in second */
     int64_t count;
-    double response_time;
+    double response_time;       /* in second */
     double iops;
-    double bandwidth;
+    double bandwidth;           /* in bytes/sec */
 } result_t;
 
 typedef struct {
@@ -516,7 +516,7 @@ print_result_json(result_t *result, bool only_params)
            result->exec_time,
            result->iops,
            result->bandwidth / MEBI,
-           result->response_time,
+           result->response_time * 1000.0,
            result->iowait_time
         );
     }
