@@ -27,6 +27,7 @@ typedef struct {
     long io_count;
     long io_bytes;
 
+    double start_time;          /* in second (unix epoch time) */
     double exec_time;           /* in second */
     double iowait_time;         /* in second */
     int64_t count;
@@ -504,6 +505,7 @@ print_result_json(result_t *result, bool only_params)
     \"io_bytes\": %ld\n\
   },\n\
   \"metrics\": {\n\
+    \"start_time_unix\": %lf,\n\
     \"exec_time_sec\": %lf,\n\
     \"iops\": %lf,\n\
     \"transfer_rate_mbps\": %lf,\n\
@@ -511,14 +513,15 @@ print_result_json(result_t *result, bool only_params)
     \"accum_io_time_sec\": %lf\n\
   }\n\
 }\n",
-           result->io_count,
-           result->io_bytes,
-           result->exec_time,
-           result->iops,
-           result->bandwidth / MEBI,
-           result->response_time * 1000.0,
-           result->iowait_time
-        );
+               result->io_count,
+               result->io_bytes,
+               result->start_time,
+               result->exec_time,
+               result->iops,
+               result->bandwidth / MEBI,
+               result->response_time * 1000.0,
+               result->iowait_time
+            );
     }
 }
 
@@ -1301,6 +1304,7 @@ micbench_io_main(int argc, char **argv)
     result.io_count = count_sum;
     result.io_bytes = count_sum * option.blk_sz;
 
+    result.start_time = TV2LONG(start_tv) / 1.0e6;
     result.exec_time = exec_time;
     result.iowait_time = iowait_time_sum / option.multi;
     result.response_time = iowait_time_sum / count_sum;

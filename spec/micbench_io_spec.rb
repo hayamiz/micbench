@@ -179,6 +179,7 @@ EOS
     "io_bytes": \\d+
   },
   "metrics": {
+    "start_time_unix": \\d+\\.\\d+,
     "exec_time_sec": \\d+\\.\\d+,
     "iops": \\d+\\.\\d+,
     "transfer_rate_mbps": \\d+\\.\\d+,
