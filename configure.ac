@@ -130,6 +130,24 @@ if test "$have_libaio" = "yes"; then
 fi
 
 dnl ******************************
+dnl Check for io_uring/liburing
+dnl ******************************
+
+AC_CHECK_HEADERS(linux/io_uring.h, [have_io_uring_h=yes], [have_io_uring_h=no])
+AC_CHECK_HEADERS(liburing.h, [have_liburing_h=yes], [have_liburing_h=no])
+
+if test "$have_io_uring_h" = "yes"; then
+  if test "$have_liburing_h" = "yes"; then
+    io_uring_available="yes"
+    AC_DEFINE([HAVE_IO_URING], [1], [Define to 1 if io_uring is available])
+  else
+    io_uring_available="no"
+  fi
+else
+  io_uring_available="no"
+fi
+
+dnl ******************************
 dnl Check for numactl
 dnl ******************************
 
@@ -218,6 +236,7 @@ echo "  numactl : $NUMACTL"
 fi
 echo
 echo "== optional =="
+echo "   io_uring : $io_uring_available"
 echo "   blktrace : $BLKTRACE"
 echo "   blkparse : $BLKPARSE"
 echo "  OProfile  : $OPCONTROL"
