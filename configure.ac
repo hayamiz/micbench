@@ -139,6 +139,7 @@ AC_CHECK_HEADERS(liburing.h, [have_liburing_h=yes], [have_liburing_h=no])
 if test "$have_io_uring_h" = "yes"; then
   if test "$have_liburing_h" = "yes"; then
     io_uring_available="yes"
+    LIBS="$LIBS -luring"
     AC_DEFINE([HAVE_IO_URING], [1], [Define to 1 if io_uring is available])
   else
     io_uring_available="no"

@@ -33,6 +33,9 @@
 #include <sys/time.h>
 #include <linux/fs.h>
 
+#ifdef HAVE_IO_URING
+#include <liburing.h>
+#endif
 
 // unit
 #define KILO 1000L

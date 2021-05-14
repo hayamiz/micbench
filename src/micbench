@@ -433,6 +433,10 @@ class IoCommand < BaseCommand
       unless @options[:blocksize] = parse_size(size)
         parse_error.call("invalid argument for --blocksize: #{size}")
       end
+
+      if @options[:blocksize] < 512
+        parse_error.call("too small blocksize #{size}, at least 512byte is required")
+      end
     end
     @parser.on('-s', '--offset-start OFFSET',
               "Offset (in blocks) to start with (default: 0)") do |offset|
@@ -479,8 +483,12 @@ class IoCommand < BaseCommand
       @options[:direct] = true
     end
     @parser.on('-A', '--async',
-              "Asynchronous IO mode with libaio (default: no).") do
+               "Asynchronous IO mode (default: no).") do
       @options[:async] = true
+    end
+    @parser.on('-g', '--engine AIO_ENGINE',
+               "Asynchronous IO engine: libaio, io_uring (default: libaio).") do |aio_engine|
+      @options[:aio_engine] = aio_engine
     end
     @parser.on('-E', '--aio-nr-events NUM',
                "# of events per AIO context (default: 64).") do |num|
@@ -532,6 +540,7 @@ class IoCommand < BaseCommand
     @options[:iosleep] = 0
     @options[:direct] = false
     @options[:async] = false
+    @options[:aio_engine] = "libaio"
     @options[:aio_nr_events] = 64
     @options[:aio_tracefile] = nil
     @options[:blocksize] = 4 * 1024
@@ -621,6 +630,7 @@ class IoCommand < BaseCommand
                         "-i", @options[:iosleep],
                         (@options[:direct] ? "-d" : []),
                         (@options[:async] ? "-A" : []),
+                        "-g", @options[:aio_engine],
                         "-E", @options[:aio_nr_events],
                         (@options[:aio_tracefile] ?
                          ["-T", @options[:aio_tracefile]] : []),
