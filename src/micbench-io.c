@@ -119,7 +119,9 @@ mb_aiom_make(int nr_events)
     }
 
     bzero(&aiom->context, sizeof(io_context_t));
+    #ifdef HAVE_IO_URING
     bzero(&aiom->uring, sizeof(struct io_uring));
+    #endif
 
     switch(option.aio_engine) {
     case AIO_LIBAIO:
@@ -128,6 +130,7 @@ mb_aiom_make(int nr_events)
             return NULL;
         }
         break;
+    #ifdef HAVE_IO_URING
     case AIO_IOURING:
         ret = io_uring_queue_init(nr_events, &aiom->uring, 0);
         if (ret != 0) {
@@ -140,6 +143,7 @@ mb_aiom_make(int nr_events)
             return NULL;
         }
         break;
+    #endif
     }
 
     return aiom;
@@ -157,9 +161,11 @@ mb_aiom_destroy (mb_aiom_t *aiom)
     case AIO_LIBAIO:
         io_destroy(aiom->context);
         break;
+#ifdef HAVE_IO_URING
     case AIO_IOURING:
         io_uring_queue_exit(&aiom->uring);
         break;
+#endif
     }
 
     while((aiom_cb = mb_res_pool_pop(aiom->cbpool)) != NULL) {
@@ -175,7 +181,7 @@ void
 mb_aiom_submit(mb_aiom_t *aiom)
 {
     int i;
-    int ret;
+    int ret = 0;
     struct timeval submit_time;
 
     if (aiom->nr_pending == 0) {
@@ -201,6 +207,7 @@ mb_aiom_submit(mb_aiom_t *aiom)
             perror("mb_aiom_submit:io_submit failed");
         }
         break;
+#ifdef HAVE_IO_URING
     case AIO_IOURING:
         ret = io_uring_submit(&aiom->uring);
         if (ret != aiom->nr_pending) {
@@ -212,6 +219,7 @@ mb_aiom_submit(mb_aiom_t *aiom)
             exit(EXIT_FAILURE);
         }
         break;
+#endif
     }
 
     if (aio_tracefile != NULL) {
@@ -228,13 +236,16 @@ aiom_cb_t *
 mb_aiom_prep_pread   (mb_aiom_t *aiom, int fd, int file_idx,
                       aiom_cb_t *aiom_cb, size_t count, long long offset)
 {
+#ifdef HAVE_IO_URING
     struct io_uring_sqe *sqe;
+#endif
 
     switch(option.aio_engine) {
     case AIO_LIBAIO:
         io_prep_pread(&aiom_cb->iocb, fd,
                       aiom_cb->vec->iov_base, aiom_cb->vec->iov_len, offset);
         break;
+#ifdef HAVE_IO_URING
     case AIO_IOURING:
         sqe = io_uring_get_sqe(&aiom->uring);
         io_uring_prep_read_fixed(sqe, fd, aiom_cb->vec->iov_base,
@@ -242,6 +253,7 @@ mb_aiom_prep_pread   (mb_aiom_t *aiom, int fd, int file_idx,
                                  offset, aiom_cb->iovec_idx);
         io_uring_sqe_set_data(sqe, aiom_cb);
         break;
+#endif
     }
     GETTIMEOFDAY(&aiom_cb->queue_time);
     aiom_cb->file_idx = file_idx;
@@ -255,13 +267,16 @@ aiom_cb_t *
 mb_aiom_prep_pwrite  (mb_aiom_t *aiom, int fd, int file_idx,
                       aiom_cb_t *aiom_cb, size_t count, long long offset)
 {
+#ifdef HAVE_IO_URING
     struct io_uring_sqe *sqe;
+#endif
 
     switch(option.aio_engine) {
     case AIO_LIBAIO:
         io_prep_pwrite(&aiom_cb->iocb, fd,
                        aiom_cb->vec->iov_base, aiom_cb->vec->iov_len, offset);
         break;
+#ifdef HAVE_IO_URING
     case AIO_IOURING:
         sqe = io_uring_get_sqe(&aiom->uring);
         io_uring_prep_write_fixed(sqe, fd, aiom_cb->vec->iov_base,
@@ -269,6 +284,7 @@ mb_aiom_prep_pwrite  (mb_aiom_t *aiom, int fd, int file_idx,
                                   offset, aiom_cb->iovec_idx);
         io_uring_sqe_set_data(sqe, aiom_cb);
         break;
+#endif
     }
     GETTIMEOFDAY(&aiom_cb->queue_time);
     aiom_cb->file_idx = file_idx;
@@ -283,10 +299,13 @@ __mb_aiom_wait(mb_aiom_t *aiom, long min_nr, long nr,
                struct io_event *events, struct timespec *timeout){
     int i;
     int nr_completed = 0;
-    int ret;
     aiom_cb_t *aiom_cb = NULL;
     struct io_event *event = NULL;
+
+#ifdef HAVE_IO_URING
+    int ret;
     struct io_uring_cqe *cqe = NULL;
+#endif
 
     switch(option.aio_engine) {
     case AIO_LIBAIO:
@@ -298,9 +317,11 @@ __mb_aiom_wait(mb_aiom_t *aiom, long min_nr, long nr,
         aiom->nr_inflight -= nr_completed;
         aiom->iocount += nr_completed;
         break;
+#ifdef HAVE_IO_URING
     case AIO_IOURING:
         nr_completed = min_nr;
         break;
+#endif
     }
 
     if (aio_tracefile != NULL) {
@@ -322,6 +343,7 @@ __mb_aiom_wait(mb_aiom_t *aiom, long min_nr, long nr,
                         (long) event->res, (long) event->res2);
             }
             break;
+#ifdef HAVE_IO_URING
         case AIO_IOURING:
             ret = io_uring_wait_cqe(&aiom->uring, &cqe);
             if (ret != 0) {
@@ -331,6 +353,7 @@ __mb_aiom_wait(mb_aiom_t *aiom, long min_nr, long nr,
             aiom_cb = (aiom_cb_t *) io_uring_cqe_get_data(cqe);
             io_uring_cqe_seen(&aiom->uring, cqe);
             break;
+#endif
         }
 
         // TODO: callback or something
@@ -742,7 +765,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
 #ifdef HAVE_IO_URING
                 option->aio_engine = AIO_IOURING;
 #else
-                fprintf(stderr, "[ERROR] io_uring is not avaiable on this platform\n", optarg);
+                fprintf(stderr, "[ERROR] io_uring is not avaiable on this platform\n");
                 goto error;
 #endif
             } else {
@@ -941,7 +964,6 @@ mb_log_io_activity(struct timeval *issue_tv, struct timeval *complete_tv,
 void
 do_async_io(th_arg_t *arg, int *fd_list)
 {
-    int ret;
     meter_t *meter;
     struct timeval start_tv;
     int64_t addr;
@@ -964,6 +986,9 @@ do_async_io(th_arg_t *arg, int *fd_list)
         exit(EXIT_FAILURE);
     }
 
+#ifdef HAVE_IO_URING
+    int ret;
+
     if (option.aio_engine == AIO_IOURING) {
         ret = io_uring_register_files(&aiom->uring, fd_list, option.nr_files);
         if (ret != 0) {
@@ -971,6 +996,7 @@ do_async_io(th_arg_t *arg, int *fd_list)
             exit(EXIT_FAILURE);
         }
     }
+#endif
 
     // offset handling
     ofst_list = malloc(sizeof(int64_t) * option.nr_files);

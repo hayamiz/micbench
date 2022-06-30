@@ -16,7 +16,10 @@ typedef enum {
 
 typedef enum {
     AIO_LIBAIO,
+
+#ifdef HAVE_IO_URING
     AIO_IOURING,
+#endif
 } mb_aio_engine_t;
 
 typedef struct {
