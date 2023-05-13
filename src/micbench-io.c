@@ -47,6 +47,7 @@ typedef struct {
 } th_arg_t;
 
 
+
 static void mb_log_io_activity(struct timeval *issue_tv, struct timeval *complete_tv,
                                const char *file, int64_t blockaddr, int blocksz);
 
@@ -68,28 +69,81 @@ mb_aiom_make(int nr_events)
     aiom->iocount = 0;
 
     aiom->pending = malloc(sizeof(aiom_cb_t *) * nr_events);
+    if (aiom->pending == NULL) {
+        perror("malloc failed");
+        exit(EXIT_FAILURE);
+    }
     bzero(aiom->pending, sizeof(aiom_cb_t *) * nr_events);
 
     aiom->events = malloc(sizeof(struct io_event) * nr_events);
+    if (aiom->events == NULL) {
+        perror("malloc failed");
+        exit(EXIT_FAILURE);
+    }
     bzero(aiom->events, sizeof(struct io_event) * nr_events);
+
+    aiom->vecs = malloc(sizeof(struct iovec) * nr_events);
+    if (aiom->vecs == NULL) {
+        perror("malloc failed");
+        exit(EXIT_FAILURE);
+    }
+    bzero(aiom->vecs, sizeof(struct iovec) * nr_events);
 
     aiom->cbpool = mb_res_pool_make(nr_events);
 
-
     for(i = 0; i < nr_events; i++) {
         aiom_cb = malloc(sizeof(aiom_cb_t));
+        if (aiom_cb == NULL) {
+            perror("malloc failed");
+            exit(EXIT_FAILURE);
+        }
         bzero(aiom_cb, sizeof(aiom_cb_t));
         if ((void *) aiom_cb != (void *) &aiom_cb->iocb)
         {
             fprintf(stderr, "Pointer mismatch: aiom_cb != &aiom_cb->iocb\n");
             exit(EXIT_FAILURE);
         }
+
+        /* prepare buffer and iovec */
+        aiom_cb->iovec_idx = i;
+        aiom_cb->vec = &aiom->vecs[i];
+        aiom_cb->vec->iov_len = option.blk_sz;
+        aiom_cb->vec->iov_base = memalign(512, option.blk_sz);
+        if (aiom_cb->vec->iov_base == NULL) {
+            perror("malloc failed.");
+            exit(EXIT_FAILURE);
+        }
+        bzero(aiom_cb->vec->iov_base, option.blk_sz);
+
         mb_res_pool_push(aiom->cbpool, aiom_cb);
     }
 
     bzero(&aiom->context, sizeof(io_context_t));
-    if ((ret = io_setup(nr_events, &aiom->context)) != 0) {
-        return NULL;
+    #ifdef HAVE_IO_URING
+    bzero(&aiom->uring, sizeof(struct io_uring));
+    #endif
+
+    switch(option.aio_engine) {
+    case AIO_LIBAIO:
+        if ((ret = io_setup(nr_events, &aiom->context)) != 0) {
+            perror("io_setup failed.");
+            return NULL;
+        }
+        break;
+    #ifdef HAVE_IO_URING
+    case AIO_IOURING:
+        ret = io_uring_queue_init(nr_events, &aiom->uring, 0);
+        if (ret != 0) {
+            perror("io_uring_queue_init failed.");
+            return NULL;
+        }
+        ret = io_uring_register_buffers(&aiom->uring, aiom->vecs, aiom->nr_events);
+        if (ret != 0) {
+            perror("io_uring_register_buffers failed.");
+            return NULL;
+        }
+        break;
+    #endif
     }
 
     return aiom;
@@ -102,23 +156,36 @@ mb_aiom_destroy (mb_aiom_t *aiom)
 
     free(aiom->pending);
     free(aiom->events);
-    io_destroy(aiom->context);
+
+    switch(option.aio_engine) {
+    case AIO_LIBAIO:
+        io_destroy(aiom->context);
+        break;
+#ifdef HAVE_IO_URING
+    case AIO_IOURING:
+        io_uring_queue_exit(&aiom->uring);
+        break;
+#endif
+    }
+
     while((aiom_cb = mb_res_pool_pop(aiom->cbpool)) != NULL) {
+        free(aiom_cb->vec->iov_base);
         free(aiom_cb);
     }
     mb_res_pool_destroy(aiom->cbpool);
+    free(aiom->vecs);
     free(aiom);
 }
 
-int
+void
 mb_aiom_submit(mb_aiom_t *aiom)
 {
-    int ret;
     int i;
+    int ret = 0;
     struct timeval submit_time;
 
     if (aiom->nr_pending == 0) {
-        return 0;
+        return;
     }
 
     GETTIMEOFDAY(&submit_time);
@@ -128,7 +195,32 @@ mb_aiom_submit(mb_aiom_t *aiom)
         cb->submit_time = submit_time;
     }
 
-    ret = io_submit(aiom->context, aiom->nr_pending, (struct iocb **) aiom->pending);
+    switch(option.aio_engine) {
+    case AIO_LIBAIO:
+        ret = io_submit(aiom->context, aiom->nr_pending,
+                        (struct iocb **) aiom->pending);
+        if (ret != aiom->nr_pending) {
+            fprintf(stderr, "mb_aiom_submit:io_submit only %d of %d succeeded\n",
+                    ret, aiom->nr_pending);
+            exit(EXIT_FAILURE);
+        } else if (ret < 0) {
+            perror("mb_aiom_submit:io_submit failed");
+        }
+        break;
+#ifdef HAVE_IO_URING
+    case AIO_IOURING:
+        ret = io_uring_submit(&aiom->uring);
+        if (ret != aiom->nr_pending) {
+            fprintf(stderr, "mb_aiom_submit:io_uring_submit only %d of %d succeeded\n",
+                    ret, aiom->nr_pending);
+            exit(EXIT_FAILURE);
+        } else if (ret < 0) {
+            perror("mb_aiom_submit:io_uring_submit failed");
+            exit(EXIT_FAILURE);
+        }
+        break;
+#endif
+    }
 
     if (aio_tracefile != NULL) {
         fprintf(aio_tracefile,
@@ -136,28 +228,35 @@ mb_aiom_submit(mb_aiom_t *aiom)
                 tid, ret);
     }
 
-    if (ret != aiom->nr_pending) {
-        fprintf(stderr, "fatal error\n");
-        exit(EXIT_FAILURE);
-    }
-
     aiom->nr_inflight += aiom->nr_pending;
     aiom->nr_pending = 0;
-
-    return ret;
 }
 
 aiom_cb_t *
-mb_aiom_prep_pread   (mb_aiom_t *aiom, int fd,
-                      void *buf, size_t count, long long offset)
+mb_aiom_prep_pread   (mb_aiom_t *aiom, int fd, int file_idx,
+                      aiom_cb_t *aiom_cb, size_t count, long long offset)
 {
-    aiom_cb_t *aiom_cb;
-    if (NULL == (aiom_cb = mb_res_pool_pop(aiom->cbpool))) {
-        return NULL;
+#ifdef HAVE_IO_URING
+    struct io_uring_sqe *sqe;
+#endif
+
+    switch(option.aio_engine) {
+    case AIO_LIBAIO:
+        io_prep_pread(&aiom_cb->iocb, fd,
+                      aiom_cb->vec->iov_base, aiom_cb->vec->iov_len, offset);
+        break;
+#ifdef HAVE_IO_URING
+    case AIO_IOURING:
+        sqe = io_uring_get_sqe(&aiom->uring);
+        io_uring_prep_read_fixed(sqe, fd, aiom_cb->vec->iov_base,
+                                 aiom_cb->vec->iov_len,
+                                 offset, aiom_cb->iovec_idx);
+        io_uring_sqe_set_data(sqe, aiom_cb);
+        break;
+#endif
     }
-    io_prep_pread(&aiom_cb->iocb, fd, buf, count, offset);
-    GETTIMEOFDAY(&aiom_cb->submit_time);
-    aiom_cb->file_idx = -1;
+    GETTIMEOFDAY(&aiom_cb->queue_time);
+    aiom_cb->file_idx = file_idx;
 
     aiom->pending[aiom->nr_pending++] = aiom_cb;
 
@@ -165,15 +264,30 @@ mb_aiom_prep_pread   (mb_aiom_t *aiom, int fd,
 }
 
 aiom_cb_t *
-mb_aiom_prep_pwrite  (mb_aiom_t *aiom, int fd,
-                      void *buf, size_t count, long long offset)
+mb_aiom_prep_pwrite  (mb_aiom_t *aiom, int fd, int file_idx,
+                      aiom_cb_t *aiom_cb, size_t count, long long offset)
 {
-    aiom_cb_t *aiom_cb;
-    if (NULL == (aiom_cb = mb_res_pool_pop(aiom->cbpool))) {
-        return NULL;
+#ifdef HAVE_IO_URING
+    struct io_uring_sqe *sqe;
+#endif
+
+    switch(option.aio_engine) {
+    case AIO_LIBAIO:
+        io_prep_pwrite(&aiom_cb->iocb, fd,
+                       aiom_cb->vec->iov_base, aiom_cb->vec->iov_len, offset);
+        break;
+#ifdef HAVE_IO_URING
+    case AIO_IOURING:
+        sqe = io_uring_get_sqe(&aiom->uring);
+        io_uring_prep_write_fixed(sqe, fd, aiom_cb->vec->iov_base,
+                                  aiom_cb->vec->iov_len,
+                                  offset, aiom_cb->iovec_idx);
+        io_uring_sqe_set_data(sqe, aiom_cb);
+        break;
+#endif
     }
-    io_prep_pwrite(&aiom_cb->iocb, fd, buf, count, offset);
-    GETTIMEOFDAY(&aiom_cb->submit_time);
+    GETTIMEOFDAY(&aiom_cb->queue_time);
+    aiom_cb->file_idx = file_idx;
 
     aiom->pending[aiom->nr_pending++] = aiom_cb;
 
@@ -181,30 +295,34 @@ mb_aiom_prep_pwrite  (mb_aiom_t *aiom, int fd,
 }
 
 int
-mb_aiom_submit_pread (mb_aiom_t *aiom, int fd, void *buf, size_t count, long long offset)
-{
-    mb_aiom_prep_pread(aiom, fd, buf, count, offset);
-    return mb_aiom_submit(aiom);
-}
-
-int
-mb_aiom_submit_pwrite(mb_aiom_t *aiom, int fd, void *buf, size_t count, long long offset)
-{
-    mb_aiom_prep_pwrite(aiom, fd, buf, count, offset);
-    return mb_aiom_submit(aiom);
-}
-
-int
-__mb_aiom_getevents(mb_aiom_t *aiom, long min_nr, long nr,
-                    struct io_event *events, struct timespec *timeout){
+__mb_aiom_wait(mb_aiom_t *aiom, long min_nr, long nr,
+               struct io_event *events, struct timespec *timeout){
     int i;
-    int nr_completed;
-    aiom_cb_t *aiom_cb;
-    struct io_event *event;
+    int nr_completed = 0;
+    aiom_cb_t *aiom_cb = NULL;
+    struct io_event *event = NULL;
 
-    nr_completed = io_getevents(aiom->context, min_nr, nr, events, timeout);
-    aiom->nr_inflight -= nr_completed;
-    aiom->iocount += nr_completed;
+#ifdef HAVE_IO_URING
+    int ret;
+    struct io_uring_cqe *cqe = NULL;
+#endif
+
+    switch(option.aio_engine) {
+    case AIO_LIBAIO:
+        nr_completed = io_getevents(aiom->context, min_nr, nr, events, timeout);
+        if (nr_completed < 0) {
+            perror("__mb_aiom_wait:io_getevents failed");
+            exit(EXIT_FAILURE);
+        }
+        aiom->nr_inflight -= nr_completed;
+        aiom->iocount += nr_completed;
+        break;
+#ifdef HAVE_IO_URING
+    case AIO_IOURING:
+        nr_completed = min_nr;
+        break;
+#endif
+    }
 
     if (aio_tracefile != NULL) {
         fprintf(aio_tracefile,
@@ -216,14 +334,29 @@ __mb_aiom_getevents(mb_aiom_t *aiom, long min_nr, long nr,
         struct timeval t1;
         const char *file_path;
 
-        event = &aiom->events[i];
-        aiom_cb = (aiom_cb_t *) event->obj;
+        switch(option.aio_engine) {
+        case AIO_LIBAIO:
+            event = &aiom->events[i];
+            aiom_cb = (aiom_cb_t *) event->obj;
+            if (!(event->res == option.blk_sz && event->res2 == 0)){
+                fprintf(stderr, "__mb_aiom_wait: fatal error on completion: res = %ld, res2 = %ld\n",
+                        (long) event->res, (long) event->res2);
+            }
+            break;
+#ifdef HAVE_IO_URING
+        case AIO_IOURING:
+            ret = io_uring_wait_cqe(&aiom->uring, &cqe);
+            if (ret != 0) {
+                perror("__mb_aiom_wait:io_uring_wait_cqe_nr failed");
+                exit(EXIT_FAILURE);
+            }
+            aiom_cb = (aiom_cb_t *) io_uring_cqe_get_data(cqe);
+            io_uring_cqe_seen(&aiom->uring, cqe);
+            break;
+#endif
+        }
 
         // TODO: callback or something
-        if (!(event->res == option.blk_sz && event->res2 == 0)){
-            fprintf(stderr, "fatal error: res = %ld, res2 = %ld\n",
-                    (long) event->res, (long) event->res2);
-        }
         GETTIMEOFDAY(&t1);
 
         aiom->iowait += mb_elapsed_time_from(&aiom_cb->submit_time);
@@ -245,13 +378,13 @@ __mb_aiom_getevents(mb_aiom_t *aiom, long min_nr, long nr,
 int
 mb_aiom_wait(mb_aiom_t *aiom, struct timespec *timeout)
 {
-    return __mb_aiom_getevents(aiom, 1, aiom->nr_inflight, aiom->events, timeout);
+    return __mb_aiom_wait(aiom, 1, aiom->nr_inflight, aiom->events, timeout);
 }
 
 int
 mb_aiom_waitall(mb_aiom_t *aiom)
 {
-    return __mb_aiom_getevents(aiom, aiom->nr_inflight, aiom->nr_inflight,
+    return __mb_aiom_wait(aiom, aiom->nr_inflight, aiom->nr_inflight,
                                aiom->events, NULL);
 }
 
@@ -262,7 +395,7 @@ mb_aiom_nr_submittable(mb_aiom_t *aiom)
 }
 
 mb_res_pool_t *
-mb_res_pool_make(int nr_events)
+mb_res_pool_make(int nr_elems)
 {
     mb_res_pool_t *pool;
     mb_res_pool_cell_t *next_cell;
@@ -270,14 +403,22 @@ mb_res_pool_make(int nr_events)
     int i;
 
     pool = malloc(sizeof(mb_res_pool_t));
+    if (pool == NULL) {
+        perror("malloc failed");
+        exit(EXIT_FAILURE);
+    }
     bzero(pool, sizeof(mb_res_pool_t));
 
-    pool->size = nr_events;
+    pool->nr_elems = nr_elems;
     pool->nr_avail = 0;
 
-    for(cell = NULL, i = 0; i < nr_events; i++) {
+    for(cell = NULL, i = 0; i < nr_elems; i++) {
         next_cell = cell;
         cell = malloc(sizeof(mb_res_pool_cell_t));
+        if (cell == NULL) {
+            perror("malloc failed");
+            exit(EXIT_FAILURE);
+        }
         bzero(cell, sizeof(mb_res_pool_cell_t));
         cell->data = NULL;
 
@@ -308,10 +449,10 @@ mb_res_pool_destroy(mb_res_pool_t *pool)
 }
 
 /* return NULL on empty */
-aiom_cb_t *
+void *
 mb_res_pool_pop(mb_res_pool_t *pool)
 {
-    aiom_cb_t *ret;
+    void *ret;
     if (pool->nr_avail == 0) {
         return NULL;
     }
@@ -324,13 +465,13 @@ mb_res_pool_pop(mb_res_pool_t *pool)
 
 /* return -1 on error, 0 on success */
 int
-mb_res_pool_push(mb_res_pool_t *pool, aiom_cb_t *aiom_cb)
+mb_res_pool_push(mb_res_pool_t *pool, void *elem)
 {
-    if (pool->nr_avail == pool->size) {
+    if (pool->nr_avail == pool->nr_elems) {
         return -1;
     }
     pool->tail = pool->tail->next;
-    pool->tail->data = aiom_cb;
+    pool->tail->data = elem;
     pool->nr_avail ++;
 
     return 0;
@@ -475,6 +616,7 @@ print_result_json(result_t *result, bool only_params)
     \"direct\": %s,\n\
     \"aio\": %s,\n\
     \"aio_nr_events\": %d,\n\
+    \"aio_engine\": \"%s\",\n\
     \"timeout_sec\": %d,\n\
     \"bogus_comp\": %ld,\n\
     \"iosleep\": %d,\n\
@@ -490,6 +632,7 @@ print_result_json(result_t *result, bool only_params)
            (option.direct ? "true" : "false"),
            (option.aio ? "true" : "false"),
            option.aio_nr_events,
+           (option.aio_engine == AIO_LIBAIO ? "libaio" : "io_uring" ),
            option.timeout,
            option.bogus_comp,
            option.iosleep,
@@ -544,6 +687,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->pattern = PATTERN_SEQ;
     option->direct = false;
     option->aio = false;
+    option->aio_engine = AIO_LIBAIO;
     option->aio_nr_events = 64;
     option->aio_tracefile = NULL;
     option->blk_sz = 4 * KIBI;
@@ -562,7 +706,7 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
     option->file_size_list = NULL;
 
     optind = 1;
-    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSDIdAE:T:WM:b:s:e:B:z:c:i:Cl:jv")) != -1){
+    while ((optchar = getopt(argc, argv, "+Nm:a:t:RSDIdAg:E:T:WM:b:s:e:B:z:c:i:Cl:jv")) != -1){
         switch(optchar){
         case 'N': // noop
             option->noop = true;
@@ -613,6 +757,21 @@ parse_args(int argc, char **argv, micbench_io_option_t *option)
             break;
         case 'A': // Asynchronous IO
             option->aio = true;
+            break;
+        case 'g': // AIO engine
+            if (strcmp(optarg, "libaio") == 0) {
+                option->aio_engine = AIO_LIBAIO;
+            } else if (strcmp(optarg, "io_uring") == 0) {
+#ifdef HAVE_IO_URING
+                option->aio_engine = AIO_IOURING;
+#else
+                fprintf(stderr, "[ERROR] io_uring is not avaiable on this platform\n");
+                goto error;
+#endif
+            } else {
+                fprintf(stderr, "[ERROR] no such AIO engine: %s\n", optarg);
+                goto error;
+            }
             break;
         case 'E': // AIO nr_events for each thread
             option->aio_nr_events = strtol(optarg, NULL, 10);
@@ -810,9 +969,7 @@ do_async_io(th_arg_t *arg, int *fd_list)
     int64_t addr;
     int n;
     int i;
-    void *buf;
     mb_aiom_t *aiom;
-    mb_res_pool_t *buffer_pool;
     struct drand48_data  rand;
 
     int file_idx;
@@ -828,13 +985,18 @@ do_async_io(th_arg_t *arg, int *fd_list)
         perror("do_async_io:mb_aiom_make failed");
         exit(EXIT_FAILURE);
     }
-    buf = malloc(option.blk_sz);
-    bzero(buf, option.blk_sz);
-    buffer_pool = mb_res_pool_make(option.aio_nr_events);
-    for(i = 0; i < option.aio_nr_events; i++){
-        buf = memalign(512, option.blk_sz);
-        mb_res_pool_push(buffer_pool, buf);
+
+#ifdef HAVE_IO_URING
+    int ret;
+
+    if (option.aio_engine == AIO_IOURING) {
+        ret = io_uring_register_files(&aiom->uring, fd_list, option.nr_files);
+        if (ret != 0) {
+            perror("do_async_io:io_uring_register_files failed");
+            exit(EXIT_FAILURE);
+        }
     }
+#endif
 
     // offset handling
     ofst_list = malloc(sizeof(int64_t) * option.nr_files);
@@ -893,25 +1055,24 @@ do_async_io(th_arg_t *arg, int *fd_list)
             }
             addr = ofst_list[file_idx] * option.blk_sz + option.misalign;
 
-            buf = mb_res_pool_pop(buffer_pool);
             if (mb_read_or_write() == MB_DO_READ) {
-                mb_aiom_prep_pread(aiom, fd_list[file_idx], buf, option.blk_sz, addr);
+                aiom_cb_t *aiom_cb;
+                if (NULL == (aiom_cb = mb_res_pool_pop(aiom->cbpool))) {
+                    exit(EXIT_FAILURE);
+                }
+                mb_aiom_prep_pread(aiom, fd_list[file_idx], file_idx,
+                                   aiom_cb, option.blk_sz, addr);
             } else {
-                mb_rand_buf(&rand, buf, option.blk_sz);
-                mb_aiom_prep_pwrite(aiom, fd_list[file_idx], buf, option.blk_sz, addr);
+                aiom_cb_t *aiom_cb;
+                if (NULL == (aiom_cb = mb_res_pool_pop(aiom->cbpool))) {
+                    exit(EXIT_FAILURE);
+                }
+                mb_rand_buf(&rand, aiom_cb->vec->iov_base, option.blk_sz);
+                mb_aiom_prep_pwrite(aiom, fd_list[file_idx], file_idx,
+                                    aiom_cb, option.blk_sz, addr);
             }
         }
-        if (0 >= (n = mb_aiom_submit(aiom))) {
-            perror("do_async_io:mb_aiom_submit failed");
-            switch(-n){
-            case EAGAIN : fprintf(stderr, "EAGAIN\n"); break;
-            case EBADF  : fprintf(stderr, "EBADF\n"); break;
-            case EFAULT : fprintf(stderr, "EFAULT\n"); break;
-            case EINVAL : fprintf(stderr, "EINVAL\n"); break;
-            case ENOSYS : fprintf(stderr, "ENOSYS\n"); break;
-            }
-            exit(EXIT_FAILURE);
-        }
+        mb_aiom_submit(aiom);
 
         if (0 >= (n = mb_aiom_wait(aiom, NULL))) {
             perror("do_async_io:mb_aiom_wait failed");
@@ -919,11 +1080,6 @@ do_async_io(th_arg_t *arg, int *fd_list)
         }
 
         for(i = 0; i < n; i++) {
-            struct io_event *event;
-            event = &aiom->events[i];
-
-            mb_res_pool_push(buffer_pool, event->obj->u.c.buf);
-
             /* do bogus comp after I/O completion */
             long idx;
             volatile double dummy = 0.0;

@@ -27,6 +27,8 @@ void test_parse_args_defaults(void);
 void test_parse_args_rw_modes(void);
 void test_parse_args_rwmix_mode(void);
 void test_parse_args_aio(void);
+void test_parse_args_aio_engine(void);
+void test_parse_args_aio_engine_io_uring(void);
 void test_parse_args_aio_nr_events(void);
 void test_parse_args_aio_trace(void);
 void test_mb_read_or_write(void);
@@ -306,7 +308,7 @@ test_parse_args_defaults(void)
     cut_assert_equal_double(0, 0.001, option.rwmix);
 	cut_assert_equal_int(PATTERN_SEQ, option.pattern);
     cut_assert_false(option.direct);
-    cut_assert_equal_int(64 * KIBI, option.blk_sz);
+    cut_assert_equal_int(4 * KIBI, option.blk_sz);
     cut_assert_false(option.verbose);
     cut_assert_false(option.aio);
     cut_assert_null(option.aio_tracefile);
@@ -347,6 +349,28 @@ test_parse_args_aio(void)
     argv[argc()] = dummy_file;
     cut_assert_equal_int(0, parse_args(argc(), argv, &option));
     cut_assert_true(option.aio);
+}
+
+void
+test_parse_args_aio_engine(void)
+{
+    argv[argc()] = "-g";
+    argv[argc()] = "libaio";
+    argv[argc()] = dummy_file;
+    cut_assert_equal_int(0, parse_args(argc(), argv, &option));
+    cut_assert_equal_int(AIO_LIBAIO, option.aio_engine);
+}
+
+void
+test_parse_args_aio_engine_io_uring(void)
+{
+#ifdef HAVE_IO_URING
+    argv[argc()] = "-g";
+    argv[argc()] = "io_uring";
+    argv[argc()] = dummy_file;
+    cut_assert_equal_int(0, parse_args(argc(), argv, &option));
+    cut_assert_equal_int(AIO_IOURING, option.aio_engine);
+#endif
 }
 
 void
