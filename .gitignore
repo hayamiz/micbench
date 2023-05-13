@@ -36,3 +36,10 @@ Makefile
 *.gcda
 *.gcno
 /.wercker/
+/src/**/*.lo
+/src/**/*.la
+/src/**/*.o
+/test/**/*.lo
+/test/**/*.la
+/test/**/*.o
+/config.log

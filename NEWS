@@ -1,7 +1,7 @@
  NEWS of micbench
 ==================
 
-## XXXX-XX-XX: micbench 0.2.0 released
+## 2023-05-13: micbench 0.2.0 released
 
   * New Feature
     * [io] subcommand
@@ -11,8 +11,6 @@
     * [io] subcommand
       * Enable JSON output by default
       * Set default block size to 4KB
-  * Bug fixes
-    * ...
 
 ## 2011-12-09: micbench 0.1.0 released
 
