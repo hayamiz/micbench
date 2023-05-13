@@ -7,7 +7,11 @@
     * [io] subcommand
       * Multiple I/O target devices can be specified
       * Added JSON output mode (--json option)
+<<<<<<< Updated upstream
       * Support io_uring
+=======
+      * Added support for io_uring
+>>>>>>> Stashed changes
   * Changes
     * [io] subcommand
       * Enable JSON output by default
